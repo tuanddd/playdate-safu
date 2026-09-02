@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="452" height="410" viewBox="0 0 452 410">
+<defs>
+  <pattern id="d50" width="2" height="2" patternUnits="userSpaceOnUse">
+    <rect width="2" height="2" fill="#fff"/><rect width="1" height="1" fill="#000"/><rect x="1" y="1" width="1" height="1" fill="#000"/>
+  </pattern>
+  <pattern id="d25" width="4" height="4" patternUnits="userSpaceOnUse">
+    <rect width="4" height="4" fill="#fff"/><rect width="1" height="1" fill="#000"/><rect x="2" y="2" width="1" height="1" fill="#000"/>
+  </pattern>
+  <pattern id="d12" width="4" height="4" patternUnits="userSpaceOnUse">
+    <rect width="4" height="4" fill="#fff"/><rect x="1" y="1" width="1" height="1" fill="#000"/>
+  </pattern>
+  <pattern id="d75" width="2" height="2" patternUnits="userSpaceOnUse">
+    <rect width="2" height="2" fill="#000"/><rect x="1" width="1" height="1" fill="#fff"/>
+  </pattern>
+</defs>
+  <rect width="452" height="410" fill="#fff"/>
+  <text x="16" y="20" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">MODIFIER ICONS — true card size, then the glyph at 3x</text>
+  <g>
+    <text x="16" y="30" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">1. PERCEPTION  ·  memory</text>
+    <path d="M 26,38 L 140,38 A 6 6 0 0 0 146,44 L 146,76 A 6 6 0 0 0 140,82 L 26,82 A 6 6 0 0 0 20,76 L 20,44 A 6 6 0 0 0 26,38 Z" fill="url(#d50)"/>
+    <path d="M 22,34 L 136,34 A 6 6 0 0 0 142,40 L 142,72 A 6 6 0 0 0 136,78 L 22,78 A 6 6 0 0 0 16,72 L 16,40 A 6 6 0 0 0 22,34 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(25,43.22) scale(0.6363636363636364)"><path d="M13 14H9V13H8V9H9V8H13V9H14V13H13M15 17H7V16H5V15H3V14H2V13H1V9H2V8H3V7H5V6H7V5H15V6H17V7H19V8H20V9H21V13H20V14H19V15H17V16H15M12 12V10H10V12M15 15V14H17V13H18V12H19V10H18V9H17V8H15V7H7V8H5V9H4V10H3V12H4V13H5V14H7V15Z" fill="#000"/><path d="M 2,1 L 21,20" stroke="#fff" stroke-width="6"/><path d="M 2,1 L 21,20" stroke="#000" stroke-width="3"/></g>
+    <text x="45" y="54" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">BLACKOUT</text>
+    <text x="45" y="67" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">DIAL HIDDEN</text>
+    <g transform="translate(158,36) scale(1.9090909090909092)"><path d="M13 14H9V13H8V9H9V8H13V9H14V13H13M15 17H7V16H5V15H3V14H2V13H1V9H2V8H3V7H5V6H7V5H15V6H17V7H19V8H20V9H21V13H20V14H19V15H17V16H15M12 12V10H10V12M15 15V14H17V13H18V12H19V10H18V9H17V8H15V7H7V8H5V9H4V10H3V12H4V13H5V14H7V15Z" fill="#000"/><path d="M 2,1 L 21,20" stroke="#fff" stroke-width="6"/><path d="M 2,1 L 21,20" stroke="#000" stroke-width="3"/></g>
+  </g><g>
+    <text x="234" y="30" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">2. PERCEPTION  ·  memory</text>
+    <path d="M 244,38 L 358,38 A 6 6 0 0 0 364,44 L 364,76 A 6 6 0 0 0 358,82 L 244,82 A 6 6 0 0 0 238,76 L 238,44 A 6 6 0 0 0 244,38 Z" fill="url(#d50)"/>
+    <path d="M 240,34 L 354,34 A 6 6 0 0 0 360,40 L 360,72 A 6 6 0 0 0 354,78 L 240,78 A 6 6 0 0 0 234,72 L 234,40 A 6 6 0 0 0 240,34 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(243,43.22) scale(0.6363636363636364)"><path d="M11 2H18V7H13V18H12V19H11V20H7V19H6V18H5V14H6V13H7V12H11V2M11 15H10V14H8V15H7V17H8V18H10V17H11V15Z" fill="#000"/></g>
+    <text x="263" y="54" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">TOO LOUD</text>
+    <text x="263" y="67" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">TICKS DUCKED</text>
+    <g transform="translate(376,36) scale(1.9090909090909092)"><path d="M11 2H18V7H13V18H12V19H11V20H7V19H6V18H5V14H6V13H7V12H11V2M11 15H10V14H8V15H7V17H8V18H10V17H11V15Z" fill="#000"/></g>
+  </g><g>
+    <text x="16" y="90" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">3. MOTOR  ·  drawn</text>
+    <path d="M 26,98 L 140,98 A 6 6 0 0 0 146,104 L 146,136 A 6 6 0 0 0 140,142 L 26,142 A 6 6 0 0 0 20,136 L 20,104 A 6 6 0 0 0 26,98 Z" fill="url(#d50)"/>
+    <path d="M 22,94 L 136,94 A 6 6 0 0 0 142,100 L 142,132 A 6 6 0 0 0 136,138 L 22,138 A 6 6 0 0 0 16,132 L 16,100 A 6 6 0 0 0 22,94 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(25,104)" shape-rendering="crispEdges"><path d="M6,0h2v1h-2zM6,1h2v1h-2zM5,2h4v1h-4zM3,3h2v1h-2zM9,3h2v1h-2zM3,4h1v1h-1zM10,4h1v1h-1zM2,5h1v1h-1zM11,5h1v1h-1zM0,6h3v1h-3zM6,6h2v1h-2zM11,6h3v1h-3zM0,7h3v1h-3zM6,7h2v1h-2zM11,7h3v1h-3zM2,8h1v1h-1zM11,8h1v1h-1zM3,9h1v1h-1zM10,9h1v1h-1zM3,10h2v1h-2zM9,10h2v1h-2zM5,11h4v1h-4zM6,12h2v1h-2zM6,13h2v1h-2z" fill="#000"/></g>
+    <text x="45" y="114" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="9.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">HAIR TRIGGER</text>
+    <text x="45" y="127" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">CRAWL TO LATCH</text>
+    <g transform="translate(158,96) scale(3)" shape-rendering="crispEdges"><path d="M6,0h2v1h-2zM6,1h2v1h-2zM5,2h4v1h-4zM3,3h2v1h-2zM9,3h2v1h-2zM3,4h1v1h-1zM10,4h1v1h-1zM2,5h1v1h-1zM11,5h1v1h-1zM0,6h3v1h-3zM6,6h2v1h-2zM11,6h3v1h-3zM0,7h3v1h-3zM6,7h2v1h-2zM11,7h3v1h-3zM2,8h1v1h-1zM11,8h1v1h-1zM3,9h1v1h-1zM10,9h1v1h-1zM3,10h2v1h-2zM9,10h2v1h-2zM5,11h4v1h-4zM6,12h2v1h-2zM6,13h2v1h-2z" fill="#000"/></g>
+  </g><g>
+    <text x="234" y="90" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">4. MOTOR  ·  drawn</text>
+    <path d="M 244,98 L 358,98 A 6 6 0 0 0 364,104 L 364,136 A 6 6 0 0 0 358,142 L 244,142 A 6 6 0 0 0 238,136 L 238,104 A 6 6 0 0 0 244,98 Z" fill="url(#d50)"/>
+    <path d="M 240,94 L 354,94 A 6 6 0 0 0 360,100 L 360,132 A 6 6 0 0 0 354,138 L 240,138 A 6 6 0 0 0 234,132 L 234,100 A 6 6 0 0 0 240,94 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(243,103)" shape-rendering="crispEdges"><path d="M8,1h1v1h-1zM7,2h3v1h-3zM7,3h3v1h-3zM6,4h5v1h-5zM1,5h3v1h-3zM6,5h5v1h-5zM5,6h7v1h-7zM0,7h2v1h-2zM5,7h7v1h-7zM5,8h7v1h-7zM1,9h3v1h-3zM6,9h5v1h-5zM7,10h3v1h-3z" fill="#000"/></g>
+    <text x="263" y="114" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">GREASED</text>
+    <text x="263" y="127" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">DIAL COASTS</text>
+    <g transform="translate(376,96) scale(3)" shape-rendering="crispEdges"><path d="M8,1h1v1h-1zM7,2h3v1h-3zM7,3h3v1h-3zM6,4h5v1h-5zM1,5h3v1h-3zM6,5h5v1h-5zM5,6h7v1h-7zM0,7h2v1h-2zM5,7h7v1h-7zM5,8h7v1h-7zM1,9h3v1h-3zM6,9h5v1h-5zM7,10h3v1h-3z" fill="#000"/></g>
+  </g><g>
+    <text x="16" y="150" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">5. MOTOR  ·  drawn</text>
+    <path d="M 26,158 L 140,158 A 6 6 0 0 0 146,164 L 146,196 A 6 6 0 0 0 140,202 L 26,202 A 6 6 0 0 0 20,196 L 20,164 A 6 6 0 0 0 26,158 Z" fill="url(#d50)"/>
+    <path d="M 22,154 L 136,154 A 6 6 0 0 0 142,160 L 142,192 A 6 6 0 0 0 136,198 L 22,198 A 6 6 0 0 0 16,192 L 16,160 A 6 6 0 0 0 22,154 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(25,163)" shape-rendering="crispEdges"><path d="M1,1h12v1h-12zM0,2h14v1h-14zM0,3h14v1h-14zM0,4h14v1h-14zM1,5h3v1h-3zM5,5h3v1h-3zM10,5h3v1h-3zM2,6h2v1h-2zM5,6h3v1h-3zM10,6h2v1h-2zM2,7h2v1h-2zM6,7h2v1h-2zM10,7h1v1h-1zM2,8h2v1h-2zM6,8h2v1h-2zM3,9h1v1h-1zM6,9h2v1h-2zM6,10h2v1h-2zM5,11h4v1h-4zM5,12h4v1h-4z" fill="#000"/></g>
+    <text x="45" y="174" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">STICKY</text>
+    <text x="45" y="187" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">NO CREEPING</text>
+    <g transform="translate(158,156) scale(3)" shape-rendering="crispEdges"><path d="M1,1h12v1h-12zM0,2h14v1h-14zM0,3h14v1h-14zM0,4h14v1h-14zM1,5h3v1h-3zM5,5h3v1h-3zM10,5h3v1h-3zM2,6h2v1h-2zM5,6h3v1h-3zM10,6h2v1h-2zM2,7h2v1h-2zM6,7h2v1h-2zM10,7h1v1h-1zM2,8h2v1h-2zM6,8h2v1h-2zM3,9h1v1h-1zM6,9h2v1h-2zM6,10h2v1h-2zM5,11h4v1h-4zM5,12h4v1h-4z" fill="#000"/></g>
+  </g><g>
+    <text x="234" y="150" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">6. MEMORY  ·  drawn</text>
+    <path d="M 244,158 L 358,158 A 6 6 0 0 0 364,164 L 364,196 A 6 6 0 0 0 358,202 L 244,202 A 6 6 0 0 0 238,196 L 238,164 A 6 6 0 0 0 244,158 Z" fill="url(#d50)"/>
+    <path d="M 240,154 L 354,154 A 6 6 0 0 0 360,160 L 360,192 A 6 6 0 0 0 354,198 L 240,198 A 6 6 0 0 0 234,192 L 234,160 A 6 6 0 0 0 240,154 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(243,163)" shape-rendering="crispEdges"><path d="M9,3h1v1h-1zM10,4h1v1h-1zM1,5h11v1h-11zM10,6h1v1h-1zM9,7h1v1h-1zM4,8h1v1h-1zM3,9h1v1h-1zM2,10h11v1h-11zM3,11h1v1h-1zM4,12h1v1h-1z" fill="#000"/></g>
+    <text x="263" y="174" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">SCRAMBLED</text>
+    <text x="263" y="187" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">RANDOM DIRS</text>
+    <g transform="translate(376,156) scale(3)" shape-rendering="crispEdges"><path d="M9,3h1v1h-1zM10,4h1v1h-1zM1,5h11v1h-11zM10,6h1v1h-1zM9,7h1v1h-1zM4,8h1v1h-1zM3,9h1v1h-1zM2,10h11v1h-11zM3,11h1v1h-1zM4,12h1v1h-1z" fill="#000"/></g>
+  </g><g>
+    <text x="16" y="210" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">7. MEMORY  ·  drawn</text>
+    <path d="M 26,218 L 140,218 A 6 6 0 0 0 146,224 L 146,256 A 6 6 0 0 0 140,262 L 26,262 A 6 6 0 0 0 20,256 L 20,224 A 6 6 0 0 0 26,218 Z" fill="url(#d50)"/>
+    <path d="M 22,214 L 136,214 A 6 6 0 0 0 142,220 L 142,252 A 6 6 0 0 0 136,258 L 22,258 A 6 6 0 0 0 16,252 L 16,220 A 6 6 0 0 0 22,214 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(25,224)" shape-rendering="crispEdges"><path d="M1,1h2v1h-2zM1,2h2v1h-2zM7,2h2v1h-2zM1,3h2v1h-2zM4,3h2v1h-2zM7,3h2v1h-2zM1,4h2v1h-2zM4,4h2v1h-2zM7,4h2v1h-2zM10,4h2v1h-2zM1,5h2v1h-2zM4,5h2v1h-2zM7,5h2v1h-2zM10,5h2v1h-2zM0,6h14v1h-14zM1,7h2v1h-2zM4,7h2v1h-2zM7,7h2v1h-2zM10,7h2v1h-2zM1,8h2v1h-2zM4,8h2v1h-2zM7,8h2v1h-2zM10,8h2v1h-2zM1,9h2v1h-2zM4,9h2v1h-2zM7,9h2v1h-2zM10,9h2v1h-2zM1,10h2v1h-2zM4,10h2v1h-2zM7,10h2v1h-2zM10,10h2v1h-2zM1,11h2v1h-2zM4,11h2v1h-2zM7,11h2v1h-2zM10,11h2v1h-2z" fill="#000"/></g>
+    <text x="45" y="234" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="9.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">FOUR TUMBLERS</text>
+    <text x="45" y="247" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">ONE MORE SPOT</text>
+    <g transform="translate(158,216) scale(3)" shape-rendering="crispEdges"><path d="M1,1h2v1h-2zM1,2h2v1h-2zM7,2h2v1h-2zM1,3h2v1h-2zM4,3h2v1h-2zM7,3h2v1h-2zM1,4h2v1h-2zM4,4h2v1h-2zM7,4h2v1h-2zM10,4h2v1h-2zM1,5h2v1h-2zM4,5h2v1h-2zM7,5h2v1h-2zM10,5h2v1h-2zM0,6h14v1h-14zM1,7h2v1h-2zM4,7h2v1h-2zM7,7h2v1h-2zM10,7h2v1h-2zM1,8h2v1h-2zM4,8h2v1h-2zM7,8h2v1h-2zM10,8h2v1h-2zM1,9h2v1h-2zM4,9h2v1h-2zM7,9h2v1h-2zM10,9h2v1h-2zM1,10h2v1h-2zM4,10h2v1h-2zM7,10h2v1h-2zM10,10h2v1h-2zM1,11h2v1h-2zM4,11h2v1h-2zM7,11h2v1h-2zM10,11h2v1h-2z" fill="#000"/></g>
+  </g><g>
+    <text x="234" y="210" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">8. MEMORY  ·  drawn</text>
+    <path d="M 244,218 L 358,218 A 6 6 0 0 0 364,224 L 364,256 A 6 6 0 0 0 358,262 L 244,262 A 6 6 0 0 0 238,256 L 238,224 A 6 6 0 0 0 244,218 Z" fill="url(#d50)"/>
+    <path d="M 240,214 L 354,214 A 6 6 0 0 0 360,220 L 360,252 A 6 6 0 0 0 354,258 L 240,258 A 6 6 0 0 0 234,252 L 234,220 A 6 6 0 0 0 240,214 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(243,223)" shape-rendering="crispEdges"><path d="M8,3h4v1h-4zM7,4h1v1h-1zM12,4h1v1h-1zM6,5h1v1h-1zM13,5h1v1h-1zM0,6h2v1h-2zM3,6h1v1h-1zM6,6h1v1h-1zM9,6h2v1h-2zM13,6h1v1h-1zM0,7h2v1h-2zM3,7h1v1h-1zM6,7h1v1h-1zM9,7h2v1h-2zM13,7h1v1h-1zM6,8h1v1h-1zM13,8h1v1h-1zM7,9h1v1h-1zM12,9h1v1h-1zM8,10h4v1h-4z" fill="#000"/></g>
+    <text x="263" y="234" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">WANDERING</text>
+    <text x="263" y="247" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">TARGETS DRIFT</text>
+    <g transform="translate(376,216) scale(3)" shape-rendering="crispEdges"><path d="M8,3h4v1h-4zM7,4h1v1h-1zM12,4h1v1h-1zM6,5h1v1h-1zM13,5h1v1h-1zM0,6h2v1h-2zM3,6h1v1h-1zM6,6h1v1h-1zM9,6h2v1h-2zM13,6h1v1h-1zM0,7h2v1h-2zM3,7h1v1h-1zM6,7h1v1h-1zM9,7h2v1h-2zM13,7h1v1h-1zM6,8h1v1h-1zM13,8h1v1h-1zM7,9h1v1h-1zM12,9h1v1h-1zM8,10h4v1h-4z" fill="#000"/></g>
+  </g><g>
+    <text x="16" y="270" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">9. RISK  ·  drawn</text>
+    <path d="M 26,278 L 140,278 A 6 6 0 0 0 146,284 L 146,316 A 6 6 0 0 0 140,322 L 26,322 A 6 6 0 0 0 20,316 L 20,284 A 6 6 0 0 0 26,278 Z" fill="url(#d50)"/>
+    <path d="M 22,274 L 136,274 A 6 6 0 0 0 142,280 L 142,312 A 6 6 0 0 0 136,318 L 22,318 A 6 6 0 0 0 16,312 L 16,280 A 6 6 0 0 0 22,274 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(25,283)" shape-rendering="crispEdges"><path d="M2,4h4v1h-4zM9,4h4v1h-4zM1,5h6v1h-6zM8,5h1v1h-1zM13,5h1v1h-1zM1,6h6v1h-6zM8,6h1v1h-1zM13,6h1v1h-1zM1,7h6v1h-6zM8,7h1v1h-1zM13,7h1v1h-1zM1,8h6v1h-6zM8,8h1v1h-1zM13,8h1v1h-1zM2,9h4v1h-4zM9,9h4v1h-4z" fill="#000"/></g>
+    <text x="45" y="294" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">DECOY</text>
+    <text x="45" y="307" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">FAKE 4TH SPOT</text>
+    <g transform="translate(158,276) scale(3)" shape-rendering="crispEdges"><path d="M2,4h4v1h-4zM9,4h4v1h-4zM1,5h6v1h-6zM8,5h1v1h-1zM13,5h1v1h-1zM1,6h6v1h-6zM8,6h1v1h-1zM13,6h1v1h-1zM1,7h6v1h-6zM8,7h1v1h-1zM13,7h1v1h-1zM1,8h6v1h-6zM8,8h1v1h-1zM13,8h1v1h-1zM2,9h4v1h-4zM9,9h4v1h-4z" fill="#000"/></g>
+  </g><g>
+    <text x="234" y="270" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">10. RISK  ·  memory</text>
+    <path d="M 244,278 L 358,278 A 6 6 0 0 0 364,284 L 364,316 A 6 6 0 0 0 358,322 L 244,322 A 6 6 0 0 0 238,316 L 238,284 A 6 6 0 0 0 244,278 Z" fill="url(#d50)"/>
+    <path d="M 240,274 L 354,274 A 6 6 0 0 0 360,280 L 360,312 A 6 6 0 0 0 354,318 L 240,318 A 6 6 0 0 0 234,312 L 234,280 A 6 6 0 0 0 240,274 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(243,283.22) scale(0.6363636363636364)"><path d="M6 2H8V1H14V2H16V3H17V4H18V5H19V7H20V14H19V16H18V20H17V21H5V20H4V16H3V14H2V8H3V5H4V4H5V3H6V2M15 5V4H13V3H9V4H7V5H6V6H5V9H4V13H5V15H6V19H8V17H10V19H12V17H14V19H16V15H17V13H18V8H17V6H16V5H15M7 8H10V11H7V8M12 11V8H15V11H12M10 13H12V15H10V13Z" fill="#000"/></g>
+    <text x="263" y="294" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">ONE SHOT</text>
+    <text x="263" y="307" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">NO SECOND TRY</text>
+    <g transform="translate(376,276) scale(1.9090909090909092)"><path d="M6 2H8V1H14V2H16V3H17V4H18V5H19V7H20V14H19V16H18V20H17V21H5V20H4V16H3V14H2V8H3V5H4V4H5V3H6V2M15 5V4H13V3H9V4H7V5H6V6H5V9H4V13H5V15H6V19H8V17H10V19H12V17H14V19H16V15H17V13H18V8H17V6H16V5H15M7 8H10V11H7V8M12 11V8H15V11H12M10 13H12V15H10V13Z" fill="#000"/></g>
+  </g><g>
+    <text x="16" y="330" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">11. EVENT  ·  drawn</text>
+    <path d="M 26,338 L 140,338 A 6 6 0 0 0 146,344 L 146,376 A 6 6 0 0 0 140,382 L 26,382 A 6 6 0 0 0 20,376 L 20,344 A 6 6 0 0 0 26,338 Z" fill="url(#d50)"/>
+    <path d="M 22,334 L 136,334 A 6 6 0 0 0 142,340 L 142,372 A 6 6 0 0 0 136,378 L 22,378 A 6 6 0 0 0 16,372 L 16,340 A 6 6 0 0 0 22,334 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(25,343)" shape-rendering="crispEdges"><path d="M5,0h4v1h-4zM3,1h2v1h-2zM9,1h2v1h-2zM2,2h1v1h-1zM11,2h1v1h-1zM2,3h1v1h-1zM6,3h2v1h-2zM11,3h1v1h-1zM1,4h1v1h-1zM5,4h4v1h-4zM12,4h1v1h-1zM1,5h1v1h-1zM6,5h2v1h-2zM12,5h1v1h-1zM1,6h1v1h-1zM12,6h1v1h-1zM0,7h1v1h-1zM13,7h1v1h-1zM0,8h14v1h-14zM1,9h12v1h-12zM2,10h10v1h-10z" fill="#000"/></g>
+    <text x="45" y="354" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">GUARD</text>
+    <text x="45" y="367" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">STOP CRANKING</text>
+    <g transform="translate(158,336) scale(3)" shape-rendering="crispEdges"><path d="M5,0h4v1h-4zM3,1h2v1h-2zM9,1h2v1h-2zM2,2h1v1h-1zM11,2h1v1h-1zM2,3h1v1h-1zM6,3h2v1h-2zM11,3h1v1h-1zM1,4h1v1h-1zM5,4h4v1h-4zM12,4h1v1h-1zM1,5h1v1h-1zM6,5h2v1h-2zM12,5h1v1h-1zM1,6h1v1h-1zM12,6h1v1h-1zM0,7h1v1h-1zM13,7h1v1h-1zM0,8h14v1h-14zM1,9h12v1h-12zM2,10h10v1h-10z" fill="#000"/></g>
+  </g><g>
+    <text x="234" y="330" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8" font-weight="700" fill="#000" text-anchor="start" letter-spacing="1">12. BODY  ·  memory</text>
+    <path d="M 244,338 L 358,338 A 6 6 0 0 0 364,344 L 364,376 A 6 6 0 0 0 358,382 L 244,382 A 6 6 0 0 0 238,376 L 238,344 A 6 6 0 0 0 244,338 Z" fill="url(#d50)"/>
+    <path d="M 240,334 L 354,334 A 6 6 0 0 0 360,340 L 360,372 A 6 6 0 0 0 354,378 L 240,378 A 6 6 0 0 0 234,372 L 234,340 A 6 6 0 0 0 240,334 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="miter"/>
+    <g transform="translate(243,343.22) scale(0.6363636363636364)"><path d="M11 12H13V14H11V12M14 1V2H15V5H14V7H15V9H16V11H17V13H18V14H19V16H20V20H19V21H3V20H2V16H3V14H4V13H5V11H6V9H7V7H8V5H7V2H8V1H14M12 3H10V8H9V10H8V12H7V13H6V15H5V17H6V16H7V15H8V14H9V15H10V16H11V17H12V18H14V17H15V15H16V14H15V12H14V10H13V8H12V3Z" fill="#000"/></g>
+    <text x="263" y="354" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.6">NITRO</text>
+    <text x="263" y="367" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#000" text-anchor="start" letter-spacing="0.2">KEEP IT LEVEL</text>
+    <g transform="translate(376,336) scale(1.9090909090909092)"><path d="M11 12H13V14H11V12M14 1V2H15V5H14V7H15V9H16V11H17V13H18V14H19V16H20V20H19V21H3V20H2V16H3V14H4V13H5V11H6V9H7V7H8V5H7V2H8V1H14M12 3H10V8H9V10H8V12H7V13H6V15H5V17H6V16H7V15H8V14H9V15H10V16H11V17H12V18H14V17H15V15H16V14H15V12H14V10H13V8H12V3Z" fill="#000"/></g>
+  </g></svg>

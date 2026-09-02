@@ -38,13 +38,15 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 
 | | |
 |---|---|
-| Dial | 0–99, front-facing, fills the screen |
+| Dial | 0–99, front-facing, recessed in the vault door at (122,128) r=52 |
+| HUD | The screen **is** the safe door: timer plate, dial well, 3 modifier plates |
 | Sweet spots | 3, randomly generated per run |
 | Directions | CW → CCW → CW |
 | Timer | **60 seconds** (counts down, `mm:ss.cc`) |
 | Open the safe | Press Ⓐ after all 3 are found |
 | Refresh rate | 50 fps |
 | Screens | Title → Play → Win / Lose → (Ⓑ) → Title |
+| Modifiers | 3 rolled per run and **shown on the cards — no effect is implemented** |
 
 ### Tuning constants (`source/main.lua`)
 
@@ -68,15 +70,40 @@ Rotating dial (r=62) + big `SAFU` logotype + `Ⓐ CRACK IT`.
 The crank already ticks here, so the mechanism is alive before the run starts.
 
 ### Play
-    ┌────────────────────────────┐
-    │ ▓ 🕐 00:47.31 ▓            │   ← black rounded bar, top-left
-    │                            │
-    │           ( DIAL )         │   ← centred at (200,128), r=68
-    │                            │
-    │              K-CHIK!       │   ← manga SFX, random spot around dial
-    │                            │
-    │          Ⓐ Open?           │   ← bottom centre
-    └────────────────────────────┘
+
+The whole screen is the safe door — black surround, white plate, engraved inner frame, rivets.
+Layout ported from `images/hud-01-vault-door.png`.
+
+    ┌──────────────────────────────────────┐
+    │ · · · · · · · · · · · · · · · · · ·  │
+    │ ▓ 🕐 00:47.31 ▓        ╔═ BLACKOUT ═╗ │  ← timer plate, then the 3
+    │                        ║ DIAL HIDDEN║ │    modifier plates, each on
+    │      ╭─────────╮       ╚════════════╝ │    a checkered offset shadow
+    │      │ ( DIAL ) │      ╔═ TOO LOUD ══╗ │
+    │      ╰─────────╯       ╚════════════╝ │  ← dial sits in a dithered
+    │        K-CHIK!         ╔═ GUARD ═════╗ │    recess, left of centre
+    │        Ⓐ OPEN?         ╚════════════╝ │
+    │ · · · · · · · · · · · · · · · · · ·  │
+    └──────────────────────────────────────┘
+
+| Element | Where |
+|---|---|
+| Timer plate | (24,20), sized from the fixed string `00:00.00` so it cannot twitch |
+| Dial well | (122,120) r=64, 25% dither, 2px rim |
+| Dial | (122,120) r=52 — centred in the door's inner area (y 8–232) |
+| Modifier plates | x=232, y=20 + i·68, 140x58, corners **scooped inward** (r=6) |
+| Ⓐ OPEN? | centred under the dial at y=192 |
+
+Card fill, shadow and outline are all the **same polygon** (`notchedPoly` in `dial.lua`), so the
+checkered shadow follows the scooped corners instead of squaring them off.
+
+Each plate is two rows: a 14x14 icon centred against the title, then the subtitle wrapped to **at
+most 2 lines**. Title and subtitle are the same family at two sizes and weights —
+**Nontendo-Bold 13** over **Bitmore 11**. `FOUR TUMBLERS` is the widest title that fits; there is
+no smaller weight to fall back to, so names must stay at or under 13 characters.
+
+The cards are **display only** — `Run.mods` is rolled in `startGame()` via `Mods.roll(3)`; no
+modifier changes play yet.
 
 **There is no progress indicator during play.** The player tracks their own progress from the
 audio/visual cues. `Ⓐ Open?` is therefore a genuine gamble.
@@ -120,7 +147,8 @@ Gameplay pauses (**the timer does not advance**) and `UNDOCK THE CRANK` is shown
 
 - `delta = crankChange / 3.6` dial units per frame. Direct, 1:1, no smoothing or acceleration.
 - `dialPos = (rawPos + posOffset) % 100`.
-- The pointer is fixed at the top; the numbered dial rotates underneath it.
+- **No index pointer is drawn.** Position is read from whichever numeral sits at 12 o'clock —
+  there is no fixed mark to read against. A real safe dial has one; adding it is open work.
 - Rendering (`Art.drawDial`): black rim, white face, white rim notches every 2 units, black
   tick marks every unit with 3 weights (major every 10, medium every 5, minor otherwise),
   rotated `00`–`90` numerals baked once at load, and a 4-spoke hub that turns with the dial.
@@ -129,11 +157,20 @@ Gameplay pauses (**the timer does not advance**) and `UNDOCK THE CRANK` is shown
 
 ## 6. Sweet spot detection
 
-Targets are generated at run start: 3 random values `0–99`, each **≥18 units from 0 and from
-each other**, so no two tumblers sit on top of one another.
+The dial **starts at a random position each run** (`rawPos = math.random(0, 99)`), and the three
+targets are then generated relative to it: 3 random values `0–99`, each **≥18 units from the
+starting position and from each other**.
+
+Keeping targets clear of the start stops a tumbler spawning under the player for a free hit. It is
+measured from the *random* start rather than from `0` on purpose — anchoring it to `0` left a fixed
+126° band of the dial (83→17) that could never hold a sweet spot in any run, which was learnable
+and skippable. With the start randomised, the excluded band moves every run and every position on
+the dial is live across runs.
 
 Per frame, in order:
 
+0. `tumbler > 3` → **stop**. Once all three are latched the tumbler logic is skipped entirely,
+   so cranking is consequence-free while you decide whether to pull the handle.
 1. `speed > RESET_SPEED` → reset progress to tumbler 1, `RESET!`. *(§7)*
 2. Not inside `±TOL` of the current target → **re-arm** and stop.
 3. Not armed → stop. *(prevents re-triggering while sitting inside the zone)*
@@ -170,7 +207,7 @@ At tumbler 1 neither gate can cost progress (there is none), so early searching 
 
 ## 8. The handle (Ⓐ)
 
-Ⓐ pulls the handle at any time during play:
+Ⓐ pulls the handle at any time during play, **except while the crank is docked**:
 
 - **All 3 found** → the safe opens.
 - **Otherwise** → `LOCKED!` + a two-note thud, and **progress resets to tumbler 1**.
@@ -223,8 +260,26 @@ influence. **The dial is the visual star** — no safe body is drawn.
 Dithering (`kDitherTypeBayer4x4`) is currently used only for SFX fade-out. Per the Ditherpunk
 reference, there is room to use it for shading rather than flat black/white.
 
-**Fonts:** Nontendo-Bold (dial numerals + tiny tik) · Bouncy-30 (manga SFX) ·
-Asheville-Mono-Light-24 (timer) · Roobert-11-Medium (UI labels).
+**Text alignment:** measured, not eyeballed — every icon+label pair sits within 0px of centre
+(audited by dumping the framebuffer and comparing ink centres). Two traps to know about:
+`gfx.getTextSize`'s second argument is a font *family table*, not a font, and `pushContext` does
+**not** reset the image draw mode — measure ink before switching to `kDrawModeFillWhite` or the
+probe draws white on white and reports nothing.
+
+Bitmap glyphs do not fill their line box, so centring a label by line height
+leaves it sitting high. `Art.inkBand(font, text)` renders the string once, scans for its first and
+last inked row, and caches the result; the Ⓐ/Ⓑ prompts, the card icons and the timer all centre on
+that ink. Bitmore's space glyph was widened from 2px to 4px so subtitle words separate.
+
+**Icons:** every HUD glyph is 14x14 to match the 13px label font — the modifier icons, the timer's
+clock, and the Ⓐ/Ⓑ buttons (`images/svg/icons-pixel.js`). The old 22px `clock`, `btn-a` and `btn-b`
+are gone.
+
+**Fonts:** Nontendo-Bold 13 (dial numerals, tiny tik, HUD timer, card titles, and **every Ⓐ/Ⓑ
+menu prompt** on every screen) ·
+Bouncy-30 (manga SFX) · Asheville-Mono-Light-24 (win-panel timer) · Roobert-11-Medium (UI labels
+on the title/win/lose screens) · **Bitmore 11** (modifier card subtitles — one size below the
+title, and the smallest text in the game).
 
 ---
 
@@ -245,27 +300,223 @@ Asheville-Mono-Light-24 (timer) · Roobert-11-Medium (UI labels).
 
 ---
 
-## 12. Not built yet
+## 12. Modifiers — designed, not built
 
-The replayability layer from §1 — **challenges/modifiers** — does not exist yet. There is one
-safe, one difficulty, one run length. This is the main open design area.
+Twelve modifiers. **Every run draws 3.** None are implemented; this section is the spec.
 
-Also absent: score/best-time persistence, more than 3 tumblers, any story or characters.
+### The set
+
+| # | Name | Axis | Tags | Icon | What it does |
+|---|---|---|---|---|---|
+| 1 | **BLACKOUT** | Perception | `channel` | `eye` + slash | The dial is not drawn. Crack it by ear |
+| 2 | **TOO LOUD** | Perception | `channel` | `volume-high` | Ticks ducked to near-silent under loud club BGM |
+| 3 | **HAIR TRIGGER** | Motor | — | `target` | `maxEngage` 0.5 → 0.15. You must crawl the last few units |
+| 4 | **GREASED** | Motor | — | `water` | The dial carries momentum after you stop cranking |
+| 5 | **STICKY** | Motor | — | `anvil` | Needs a minimum crank speed to move at all — no creeping |
+| 6 | **SCRAMBLED** | Memory | — | `arrow-left-right` | `dirs` randomised per tumbler instead of `{1,-1,1}` |
+| 7 | **FOUR TUMBLERS** | Memory | `time` | `lock` | 4 sweet spots instead of 3 |
+| 8 | **WANDERING** | Memory | — | `compass` | Targets drift, but only while you are *not* cranking |
+| 9 | **DECOY** | Risk | — | `help` | A fake 4th spot with a duller, learnable K-CHIK |
+| 10 | **ONE SHOT** | Risk | `fail` | `skull` | A wrong Ⓐ ends the run instead of resetting progress |
+| 11 | **GUARD** | Event | `fail` | `bell` | Footsteps: stop cranking within 3 s or you're caught |
+| 12 | **NITRO** | Body | `fail` | `flask` | Accelerometer: keep the device level or it goes off |
+
+**Icons are chosen and exported.** 14x14, 1-bit, transparent: eight hand-drawn on the 14 grid,
+four from [Pictogrammers Memory](https://github.com/Pictogrammers/Memory). Assets live at
+`source/images/modifiers/<icon-id>.png` and as the imagetable
+`source/images/mod-icons-table-14-14.png`; `images/icons-manifest.json` maps id → file, and
+`images/README.md` documents the pipeline. Contact sheet: `images/hud-modifier-icons.png`.
+
+`source/modifiers.lua` carries the catalogue (id, name, sub, icon, axis, tags), the icon loaders,
+and the pair-scoring rules below as `Mods.pairClass` / `Mods.score` / `Mods.roll`. It is **data and
+art only — no modifier mechanic is implemented.** Its rule tables reproduce the 38 banned / 38 hard
+/ 144 normal split stated below; change the two together.
+
+### Modes and combinations
+
+Axes are **flavour, not rules** — they were only ever a proxy for "these conflict." Compatibility
+is now judged directly, per pair, and drives two modes.
+
+**Every pair of modifiers is classified once:**
+
+| Class | Weight | Meaning |
+|---|---|---|
+| **banned** | — | The run is impossible. Never offered in any mode |
+| **hard ×2** | 2 | On its own makes a run hard mode |
+| **hard ×1** | 1 | Needs a second friction to qualify |
+| normal | 0 | Everything else — 46 of the 66 pairs |
+
+**A drawn triple is scored by its three pairs:** any banned pair → discard; total ≥ 2 → **HARD**;
+otherwise → **NORMAL**.
+
+**220 possible triples → 38 banned, 38 hard, 144 normal. 182 playable runs.**
+
+#### Banned — genuinely impossible (4 pairs)
+
+| Pair | Why |
+|---|---|
+| BLACKOUT + TOO LOUD | Both continuous channels gone; only discrete SFX text remains |
+| HAIR TRIGGER + STICKY | A floor speed above a ceiling speed — the window closes to nothing |
+| TOO LOUD + GUARD | GUARD's *only* warning before a hard game over is audio, and TOO LOUD exists to bury audio |
+| BLACKOUT + NITRO | The water layer would have to render over a pitch-black screen with no readable contrast, while a hidden tilt limit kills the run |
+
+#### Hard ×2 — stacked death (3 pairs)
+
+ONE SHOT + GUARD · ONE SHOT + NITRO · GUARD + NITRO
+
+Two ways to lose instantly in one run. Beatable, but the run becomes about not dying.
+All three together scores 6 — the signature hard-mode draw.
+
+#### Hard ×1 — friction (13 pairs)
+
+| Pair | Why |
+|---|---|
+| BLACKOUT + DECOY | BLACKOUT eats DECOY's *visual* tell — no dial means no missing shake. Audio tell survives |
+| TOO LOUD + DECOY | The mirror: TOO LOUD buries DECOY's *audio* tell. Visual tell survives |
+| TOO LOUD + SCRAMBLED | SCRAMBLED's wrong-direction tell is audio-only, so it gets buried |
+| TOO LOUD + HAIR TRIGGER | Losing the audio speed encoding exactly when fine speed control matters most |
+| BLACKOUT + WANDERING | Targets moving with no visual reference |
+| HAIR TRIGGER + GREASED | Momentum vs. a 0.15 ceiling — you must coast in and let it decay |
+| STICKY + GREASED | Lunge to break stiction, then get carried past |
+| NITRO + GREASED | Fighting momentum is exactly what tilts the device |
+| NITRO + STICKY | Lunging to break stiction tilts it too |
+| SCRAMBLED + WANDERING | Unknown direction *and* a moving target |
+| FOUR TUMBLERS + WANDERING | Four drifting targets inside 60 s |
+| FOUR TUMBLERS + GUARD | More work against a clock that freezes |
+| DECOY + ONE SHOT | A poisoned count where a wrong press is fatal |
+
+#### DECOY's two tells are load-bearing
+
+DECOY is only fair because it has one tell per channel — the duller `sweet-fake.wav` tail, and the
+missing screen shake. **BLACKOUT kills the visual one; TOO LOUD kills the audio one.** Either alone
+leaves a tell and is merely hard. Both together would leave none, which is why that pair is banned
+on its own account anyway.
+
+#### BLACKOUT and other UI tells
+
+Under BLACKOUT only the timer and the three cards are lit, so any tell drawn elsewhere goes dark.
+
+- **ONE SHOT + BLACKOUT is allowed.** The trembling Ⓐ element is invisible and that tell is
+  deliberately sacrificed — ONE SHOT's rule is stated on its card, and the tremble is flavour
+  rather than information the player needs to survive.
+- **DECOY + BLACKOUT leaves exactly one tell.** With no `K-CHIK!` text and no shake, a real latch
+  and a fake one differ *only* in the sound tail — the clean ring versus the 92 Hz dud at 105 ms.
+  That difference is real and learnable, so the pair stays hard rather than banned, but it is the
+  purest test of the audio tell in the whole set.
+- **NITRO + BLACKOUT is banned** (above), which is what removes the contrast problem entirely.
+  The water layer never has to render against black.
+
+### Run layout
+
+Play moves from one centred dial to a two-column layout inside a **vault-door frame**:
+
+    ┌══════════════════════════════════┐
+    ║ 🕐 00:47.31        ┌───────────┐ ║
+    ║                    │ ◆ NAME    │ ║
+    ║      ( DIAL )      │   subtitle│ ║
+    ║                    ├───────────┤ ║
+    ║                    │ ◆ NAME    │ ║
+    ║                    │   subtitle│ ║
+    ║                    ├───────────┤ ║
+    ║   Ⓐ Open?          │ ◆ NAME    │ ║
+    ║                    │   subtitle│ ║
+    └══════════════════════════════════┘
+
+Dial left, a column of three modifier cards right (icon + title + subtitle), everything wrapped in
+a bordered container resembling the vault door. `CX`, `CY` and `R` all change; BLACKOUT and NITRO
+are specified against this layout, so it lands first.
+
+### Per-modifier implementation
+
+**1 · BLACKOUT** — the screen goes **pitch black**. The only lit things are the timer and the
+three modifier cards, the cards illuminated by a **cone of light from a flashlight below the
+bottom edge**, sold with a dither ramp.
+
+**Nothing else is drawn.** No dial, no screen shake, and **no manga SFX text at all** — not
+`K-CHIK!`, not `TOO FAST`, not `RESET!`, not `LOCKED!`, not the tiny `tik`. The run is played
+purely by ear. This is the only modifier that removes a channel completely rather than degrading
+it.
+
+Build: bake the cone once at load as a Bayer-dithered mask (density falling off with distance and
+angle), then `gfx.setStencilImage()` so card drawing only lands inside the cone. Order: fill black
+→ cards through the stencil → timer on top, unstencilled. Static mask, so it costs nothing per
+frame. Skip `addEffect` at the call sites rather than just skipping `drawEffects`, so no effect
+objects are allocated for something that can never be seen. The shake becomes moot on its own —
+`shakeStart` only ever offsets the dial.
+
+**Audio must cover every event, and it already does:** hit → `sweet.wav`, graze → the dulled
+half-rate tick, reset → `resetVoice`, wrong handle → `lockedVoice`, movement → `tick.wav`. Five
+events, five distinct sounds, no gaps. BLACKOUT is what the tick design was always for.
+
+**2 · TOO LOUD** — `nightclub.wav` loops loud; mechanism sounds duck via a `cfg.mechVolume`
+multiplier inside `Sfx.tick/sweetSpot/graze` (ticks ~0.1, K-CHIK ~0.35 so hits still cut through).
+Adds a recurring **music-note SFX** (Pictogrammers *music-note*) that launches from the **top
+edge** at a random diagonal, left or right, flanked by `// \\` emphasis strokes.
+
+**3 · HAIR TRIGGER** — `cfg.maxEngage = 0.15`. No UI.
+
+**4 · GREASED** — `readCrank` keeps a velocity: `vel = vel * 0.90 + delta`; the dial advances by
+`vel`. Coasting still ticks and still grazes. No UI — the coasting is self-evident.
+
+**5 · STICKY** — accumulate sub-threshold input; release it in one pop when it breaks stiction.
+The pop can shove you through a zone; that is the point. No UI.
+
+**6 · SCRAMBLED** — `cfg.dirs` randomised per tumbler. **No UI tell.** Ships with an *audio*
+wrong-direction cue only, since `if dir ~= need then return end` is currently silent.
+
+**7 · FOUR TUMBLERS** — `cfg.tumblers = 4`; de-hardcodes `genTargets`, `cfg.dirs` length,
+`tryHandle`'s `tumbler == 4`, and `Art.drawDots` (currently 3 dots at `(i-2)*28`; needs
+`(i-(n+1)/2)*28`). No UI tell beyond the dots.
+
+**8 · WANDERING** — drift the current target only while `speed < ε`, ~2 units/sec. Invisible.
+
+**9 · DECOY** — a 4th fake target, same generation rules. Fires `sweet-fake.wav` and the **same**
+`K-CHIK!` text, but **no screen shake** and no tumbler advance. Two subtle tells, one per channel.
+Fires every time it is crossed properly, so it is a learnable landmark rather than a one-off trap.
+
+**10 · ONE SHOT** — `tryHandle`'s failure branch jumps straight to lose, with a `CAUGHT` end
+screen. UI detail: the **Ⓐ Open? element trembles** — a fast, small, indefinitely repeating
+left-right shake, like it is scared of being pressed.
+
+**11 · GUARD** — `ambience.wav` loops for the whole run. `footstep.wav` fires occasionally; from
+that moment the player has a **3-second grace** to bring the crank to a stop. Still moving when
+the grace expires is a **hard game over** — the guard found you. Resume freely once the footsteps
+pass. The grace exists so the cue is always reactable.
+
+**12 · NITRO** — `playdate.startAccelerometer()`, **x-axis only**, so the player tilts only left
+and right. Drawn as the **top layer over everything**: a water level with real sloshing physics,
+like a glass of water. A damped spring on the surface angle gives the slosh; the surface stays
+level as the device tilts. Rendered as a dithered fill so the game stays readable underneath.
+Tilt past the limit and it spills — run over.
+
+### Axes (descriptive only)
+
+Perception 2 · Motor 3 · Memory 3 · Risk 2 · Event 1 · Body 1
+
+Kept as a way to talk about what a modifier twists, and as a rough guide when adding new ones —
+Event and Body have one member each, so those are the thin spots. They no longer gate any draw.
+
+---
+
+## 12b. Also not built yet
+
+Score/best-time persistence, any story or characters, and no index pointer on the dial (§5).
 
 ---
 
 ## 13. Code map
 
     source/
-      main.lua    state machine, crank read, tumbler logic, HUD, screens, transitions, Sim hooks
-      dial.lua    Art.*  — dial rendering, manga SFX baking, progress dots, fonts, icons
+      main.lua      state machine, crank read, tumbler logic, HUD, screens, transitions
+                    Run.mods / Run.has(id) — the rolled modifiers, for the effects work
+      dial.lua      Art.*  — dial, vault door, dial well, timer plate, modifier cards,
+                    manga SFX baking, progress dots, fonts, icons
+      modifiers.lua Mods.* — the 12 modifiers, their icons, pair scoring. Data + art only
+      images/modifiers/          12 standalone 14x14 icons
+      images/mod-icons-table-14-14.png  the same 12 as an imagetable (loads as images/mod-icons)
       sound.lua   Sfx.*  — samples, synths, BGM
-      shots.lua   simulator-only screenshot harness (ENABLED = false)
+      sounds/     tick, sweet, sweet-fake, cleared, bgm, nightclub, ambience, footstep
       pdxinfo     name=Safu, bundleID=com.vincent.safu
-
-`shots.lua` drives a scripted run in the simulator via the `Sim` table exported at the bottom of
-`main.lua` and writes PNGs — useful for checking screens without touching the device. Flip
-`ENABLED` to `true` and fix the hardcoded output path before using it.
 
 ---
 

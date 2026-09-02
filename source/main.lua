@@ -2,6 +2,7 @@ import "CoreLibs/graphics"
 import "CoreLibs/timer"
 import "sound"
 import "dial"
+import "modifiers"
 
 local gfx <const> = playdate.graphics
 local pd <const> = playdate
@@ -11,6 +12,19 @@ pd.display.setRefreshRate(50)
 local CX <const> = 200
 local CY <const> = 128
 local R <const> = 68
+
+-- Play screen: the dial sits left of centre, in the door's recess, leaving the
+-- right column for the three modifier plates. Title/lose screens keep CX/CY.
+local PLAY_CX <const> = 122
+local PLAY_CY <const> = 120
+local PLAY_R <const> = 52
+local WELL_R <const> = 64
+-- Three plates fill the door's right column: 20..214, three 58s and two 10 gaps.
+local CARD_X <const> = 232
+local CARD_Y <const> = 20
+local CARD_W <const> = 140
+local CARD_H <const> = 58
+local CARD_GAP <const> = 68
 local DEG_PER_UNIT <const> = 3.6
 local TOL <const> = 2.2
 local MAX_ENGAGE_SPEED <const> = 0.5
@@ -56,6 +70,17 @@ local exitImage = nil
 local exitClock = 0
 local lastTime = pd.getCurrentTimeMilliseconds()
 
+-- The modifiers rolled for this run. The HUD only draws them; the effects work
+-- reads Run.mods / Run.has(id) and is free to change behaviour from there.
+Run = { mods = {}, mode = "normal" }
+
+function Run.has(id)
+    for _, m in ipairs(Run.mods) do
+        if m.id == id then return true end
+    end
+    return false
+end
+
 local function now()
     return pd.getCurrentTimeMilliseconds()
 end
@@ -64,11 +89,11 @@ local function wrapDist(a, b)
     return math.abs(((a - b + 50) % 100) - 50)
 end
 
-local function genTargets()
+local function genTargets(startPos)
     local t = {}
     while #t < 3 do
         local n = math.random(0, 99)
-        local ok = wrapDist(n, 0) >= 18
+        local ok = wrapDist(n, startPos) >= 18
         for _, v in ipairs(t) do
             if wrapDist(n, v) < 18 then ok = false end
         end
@@ -81,24 +106,33 @@ local function addEffect(set, x, y, life)
     effects[#effects + 1] = { set = set, x = x, y = y, born = now(), life = life }
 end
 
+local function dialGeom()
+    if state == STATE_PLAY or state == STATE_WIN then
+        return PLAY_CX, PLAY_CY, PLAY_R
+    end
+    return CX, 126, 62
+end
+
 local function placeAround(set, spread)
+    local cx, cy, r = dialGeom()
     local a = math.random() * math.pi * 2
-    local x = CX + math.cos(a) * (R + spread)
-    local y = CY + math.sin(a) * (R + spread * 0.6)
-    x = math.max(set.hw + 3, math.min(397 - set.hw, x))
-    y = math.max(set.hh + 3, math.min(237 - set.hh, y))
+    local x = cx + math.cos(a) * (r + spread)
+    local y = cy + math.sin(a) * (r + spread * 0.6)
+    x = math.max(set.hw + 10, math.min(390 - set.hw, x))
+    y = math.max(set.hh + 10, math.min(230 - set.hh, y))
     return x, y
 end
 
 local function startGame()
     math.randomseed(now())
-    targets = genTargets()
+    rawPos = math.random(0, 99)
+    posOffset = 0
+    dialPos = rawPos % 100
+    targets = genTargets(dialPos)
+    Run.mods, Run.mode = Mods.roll(3)
     tumbler = 1
     armed = true
-    rawPos = 0
-    posOffset = 0
-    dialPos = 0
-    lastDetent = 0
+    lastDetent = math.floor(dialPos / TICK_STEP)
     remaining = GAME_MS
     shakeStart = -9999
     effects = {}
@@ -113,7 +147,7 @@ local function startGame()
 end
 
 local function readCrank()
-    local change = SimCrank or pd.getCrankChange()
+    local change = pd.getCrankChange()
     local delta = change / DEG_PER_UNIT
     rawPos = rawPos + delta
     dialPos = (rawPos + posOffset) % 100
@@ -226,29 +260,34 @@ local function formatTime(ms)
     return string.format("%02d:%02d.%02d", m, s, c)
 end
 
+-- Every Ⓐ/Ⓑ prompt in the game: a 14x14 button glyph and a 13px label, the pair
+-- centred on cx and on each other. `y` is the top of the glyph.
+local ICON <const> = 14
+local ICON_GAP <const> = 5
+
 local function drawIconLabel(icon, text, cx, y, white)
-    gfx.setFont(Art.uiFont)
+    gfx.setFont(Art.numFont)
     local tw = gfx.getTextSize(text)
-    local x = cx - (28 + tw) / 2
+    -- measure before switching draw mode; inkBand needs to draw black on white
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
+    local x = math.floor(cx - (ICON + ICON_GAP + tw) / 2)
     if white then gfx.setImageDrawMode(gfx.kDrawModeFillWhite) end
     icon:draw(x, y)
-    gfx.drawText(text, x + 28, y + 1)
+    gfx.drawText(text, x + ICON + ICON_GAP, y + math.floor((ICON - inkH) / 2) - inkTop)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
-local function drawTopBar()
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillRoundRect(-8, -8, 198, 40, 8)
-    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
-    Art.iconClock:draw(10, 5)
-    gfx.setFont(Art.timerFont)
-    gfx.drawText(formatTime(remaining), 40, 2)
-    gfx.setImageDrawMode(gfx.kDrawModeCopy)
+local function drawModCards()
+    for i, m in ipairs(Run.mods) do
+        Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
+            Mods.iconImage(m.icon), m.name, m.sub)
+    end
 end
 
 local function drawHud()
-    drawTopBar()
-    drawIconLabel(Art.iconA, "Open?", 200, 212, false)
+    Art.drawTimerPlate(24, 20, formatTime(remaining))
+    drawModCards()
+    drawIconLabel(Art.iconA, "OPEN?", PLAY_CX, 192, false)
     if showFps then pd.drawFPS(370, 224) end
 end
 
@@ -285,7 +324,7 @@ local function drawEffects()
 end
 
 local function drawScene()
-    gfx.clear(gfx.kColorWhite)
+    Art.drawDoor()
     local ox, oy = 0, 0
     local sage = now() - shakeStart
     if sage < 220 then
@@ -293,7 +332,8 @@ local function drawScene()
         ox = math.sin(sage / 15) * amp
         oy = math.cos(sage / 11) * amp * 0.7
     end
-    Art.drawDial(CX + ox, CY + oy, R, dialPos)
+    Art.drawDialWell(PLAY_CX, PLAY_CY, WELL_R)
+    Art.drawDial(PLAY_CX + ox, PLAY_CY + oy, PLAY_R, dialPos)
     drawHud()
     drawEffects()
 end
@@ -319,12 +359,18 @@ local function updatePlay(dt)
     end
 end
 
+local DOCKED_TEXT <const> = "UNDOCK THE CRANK"
+
 local function drawDockedNotice()
+    local bx, by, bw, bh <const> = 74, 96, 252, 48
     gfx.setColor(gfx.kColorBlack)
-    gfx.fillRoundRect(74, 96, 252, 48, 8)
+    gfx.fillRoundRect(bx, by, bw, bh, 8)
     gfx.setFont(Art.uiFont)
+    -- centre on the text's ink, not its line box, or it sits high in the panel
+    local inkTop, inkH = Art.inkBand(Art.uiFont, Art.CAPS)
     gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
-    gfx.drawTextAligned("UNDOCK THE CRANK", 200, 113, kTextAlignment.center)
+    gfx.drawTextAligned(DOCKED_TEXT, bx + math.floor(bw / 2),
+        by + math.floor((bh - inkH) / 2) - inkTop, kTextAlignment.center)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
@@ -394,7 +440,7 @@ local function drawTitle()
     gfx.setFont(Art.uiFont)
     gfx.setColor(gfx.kColorBlack)
     gfx.fillRoundRect(120, 204, 160, 30, 6)
-    drawIconLabel(Art.iconA, "CRACK IT", 200, 208, true)
+    drawIconLabel(Art.iconA, "CRACK IT", 200, 212, true)
 end
 
 local function startToTitle()
@@ -459,16 +505,3 @@ function pd.update()
 
     pd.timer.updateTimers()
 end
-
-Sim = {
-    setCrank = function(v) SimCrank = v end,
-    start = function() startGame() end,
-    tumbler = function() return tumbler end,
-    need = function() return DIRS[math.min(tumbler, 3)] end,
-    state = function() return state end,
-    setRemaining = function(v) remaining = v end,
-    fps = function() showFps = true end,
-    handle = function() tryHandle() end,
-}
-
-import "shots"

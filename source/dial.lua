@@ -6,10 +6,12 @@ Art.numFont = gfx.font.new("fonts/Nontendo-Bold")
 Art.sfxFont = gfx.font.new("fonts/Bouncy-30")
 Art.timerFont = gfx.font.new("fonts/Asheville-Mono-Light-24-px")
 Art.uiFont = gfx.font.new("fonts/Roobert-11-Medium")
+Art.subFont = gfx.font.new("fonts/font-Bitmore")
 
-Art.iconClock = gfx.image.new("images/clock")
-Art.iconA = gfx.image.new("images/btn-a")
-Art.iconB = gfx.image.new("images/btn-b")
+-- All HUD glyphs are 14x14, matching the 13px label font.
+Art.iconClock14 = gfx.image.new("images/clock-14")
+Art.iconA = gfx.image.new("images/btn-a-14")
+Art.iconB = gfx.image.new("images/btn-b-14")
 
 local FADES <const> = { 0.80, 0.60, 0.42, 0.26, 0.12 }
 local WIGGLE <const> = { 13, -10, 7, -4, 2, 0 }
@@ -173,4 +175,180 @@ function Art.drawDots(cx, y, filled, light)
     end
     gfx.setLineWidth(1)
     gfx.setColor(gfx.kColorBlack)
+end
+
+-- Canonical samples: caps with no space, no descender and no punctuation, so
+-- every label of a given font aligns identically instead of shifting with its
+-- own letters. CAPS covers the uppercase UI text; DIGITS the timer.
+Art.CAPS = "ABEHOX"
+Art.DIGITS = "0123456789"
+
+-- A bitmap font's glyphs do not fill its line box — there is slack above the
+-- caps and below the baseline for descenders. Centring a label by its line
+-- height therefore leaves it sitting high next to a glyph that fills its box.
+-- Measure where the ink actually starts and how tall it is, once per font.
+local inkCache = {}
+
+function Art.inkBand(font, sample)
+    local key = tostring(font) .. "\0" .. sample
+    local hit = inkCache[key]
+    if hit then return hit[1], hit[2] end
+
+    -- Measure through the font's own methods: gfx.getTextSize's second argument
+    -- is a font *family* table, not a font, and passing one gives a 0-width box.
+    local w = font:getTextWidth(sample)
+    local h = font:getHeight()
+    local probe = gfx.image.new(w + 2, h + 4, gfx.kColorWhite)
+    gfx.pushContext(probe)
+        -- pushContext does not reset the image draw mode: if a caller left
+        -- FillWhite set, the probe would draw white on white and measure nothing.
+        gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setFont(font)
+        gfx.drawText(sample, 0, 0)
+    gfx.popContext()
+    gfx.setImageDrawMode(gfx.kDrawModeCopy)
+
+    local top, bottom
+    for y = 0, h + 3 do
+        for x = 0, w + 1 do
+            if probe:sample(x, y) == gfx.kColorBlack then
+                if not top then top = y end
+                bottom = y
+                break
+            end
+        end
+    end
+    top = top or 0
+    bottom = bottom or (h - 1)
+    inkCache[key] = { top, bottom - top + 1 }
+    return top, bottom - top + 1
+end
+
+-- ---------------------------------------------------------------------------
+-- Play-screen furniture: the vault door, the recessed dial well, the timer
+-- plate and the modifier cards. Layout mirrors images/hud-01-vault-door.png.
+-- Drawing only — Art knows nothing about what a modifier does.
+
+local CARD_NOTCH <const> = 6
+
+-- The card outline as a closed polygon: a rectangle whose four corners are
+-- scooped inward by a quarter circle centred ON the corner. Returned as a
+-- geometry.polygon so the fill, the shadow and the stroke are all the same
+-- shape — the shadow follows the scoops instead of squaring them off.
+local function notchedPoly(x, y, w, h, r)
+    local pts = {}
+    local function arc(cx, cy, fromDeg, toDeg)
+        for i = 0, 4 do
+            local a = math.rad(fromDeg + (toDeg - fromDeg) * i / 4)
+            pts[#pts + 1] = cx + math.cos(a) * r
+            pts[#pts + 1] = cy + math.sin(a) * r
+        end
+    end
+    arc(x + w, y, 180, 90)          -- top-right scoop
+    arc(x + w, y + h, 270, 180)     -- bottom-right
+    arc(x, y + h, 360, 270)         -- bottom-left
+    arc(x, y, 90, 0)                -- top-left
+    local poly = playdate.geometry.polygon.new(table.unpack(pts))
+    poly:close()
+    return poly
+end
+
+-- Black surround, white door plate, engraved inner frame, rivets.
+function Art.drawDoor()
+    gfx.clear(gfx.kColorBlack)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillRect(3, 3, 394, 234)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    gfx.drawRect(4, 4, 392, 232)
+    gfx.drawRect(8, 8, 384, 224)
+    gfx.setLineWidth(1)
+    for i = 0, 12 do
+        local x = 28 + i * 28
+        gfx.fillRect(x - 2, 14, 4, 4)
+        gfx.fillRect(x - 2, 222, 4, 4)
+    end
+    for i = 0, 5 do
+        local y = 44 + i * 29
+        gfx.fillRect(14, y - 2, 4, 4)
+        gfx.fillRect(382, y - 2, 4, 4)
+    end
+end
+
+-- The dial sits in a shallow dithered recess.
+function Art.drawDialWell(cx, cy, r)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.25, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillCircleAtPoint(cx, cy, r)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    gfx.drawCircleAtPoint(cx, cy, r)
+    gfx.setLineWidth(1)
+end
+
+-- Timer readout on a black plate over a checkered offset shadow. The plate is
+-- sized from a fixed reference string, not the live text, so it cannot twitch
+-- as the digits change. Icon and text are both centred on the plate's midline.
+local TIMER_REF <const> = "00:00.00"
+
+function Art.drawTimerPlate(x, y, text)
+    gfx.setFont(Art.numFont)
+    local rw = gfx.getTextSize(TIMER_REF)
+    local _, th = gfx.getTextSize(text)
+    local w = 6 + 14 + 6 + rw + 8
+    local h = math.max(24, th + 8)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillRoundRect(x + 4, y + 4, w, h, 4)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillRoundRect(x, y, w, h, 4)
+    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+    Art.iconClock14:draw(x + 6, y + math.floor((h - 14) / 2))
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.DIGITS)
+    gfx.drawText(text, x + 26, y + math.floor((h - inkH) / 2) - inkTop)
+    gfx.setImageDrawMode(gfx.kDrawModeCopy)
+    return w, h
+end
+
+-- One modifier plate: scooped corners over a checkered offset shadow, then two
+-- rows — [icon | title] with the icon centred on the title, subtitle beneath at
+-- the title's x. `icon` is a 14x14 image or nil.
+function Art.drawModCard(x, y, w, h, icon, title, sub)
+    local n <const> = CARD_NOTCH
+    local shape = notchedPoly(x, y, w, h, n)
+
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillPolygon(notchedPoly(x + 4, y + 4, w, h, n))
+
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillPolygon(shape)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    gfx.drawPolygon(shape)
+    gfx.setLineWidth(1)
+
+    -- Row 1 is [icon | title], the 14x14 icon drawn 1:1 and centred against the
+    -- title's line. Row 2 is the subtitle, one size down, wrapped to 2 lines.
+    local ICON <const> = 14
+    local textX = x + 9 + ICON + 6
+    local availW = w - (textX - x) - 6
+
+    gfx.setFont(Art.numFont)
+    local _, th = gfx.getTextSize(title)
+    gfx.setFont(Art.subFont)
+    local _, lineH = gfx.getTextSize("Xy")
+    local _, sh = gfx.getTextSizeForMaxWidth(sub, availW)
+    if sh > lineH * 2 then sh = lineH * 2 end
+
+    local top = y + math.floor((h - (th + 3 + sh)) / 2)
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
+    if icon then icon:draw(x + 9, top + inkTop + math.floor((inkH - ICON) / 2)) end
+    gfx.setFont(Art.numFont)
+    gfx.setFont(Art.numFont)
+    gfx.drawText(title, textX, top)
+
+    gfx.setFont(Art.subFont)
+    gfx.drawTextInRect(sub, textX, top + th + 3, availW, lineH * 2)
 end

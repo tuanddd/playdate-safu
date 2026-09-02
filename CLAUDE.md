@@ -15,7 +15,7 @@ mechanics change.
 - **Always update `game.md` in the same pass as any change to the game.** Mechanics, tuning
   constants, screens, transitions, feedback, new states — if the code changes, `game.md` changes
   with it. It must never describe a build that no longer exists.
-- Always deploy the latest changes to the device after every iteration without waiting for user's confirm
+- If there is a Playdate device connected, always deploy the latest changes to the device after every iteration without waiting for user's confirm
 - Avoid any destructive action on the real Playdate device, ask the user before doing anything
 - Append "🐥 vincent" at the end of every of your reply
 

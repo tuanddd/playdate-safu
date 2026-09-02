@@ -1,0 +1,111 @@
+{
+  "note": "Safu modifier icons. Frames are 1-indexed to match Playdate imagetable:getImage().",
+  "size": [
+    14,
+    14
+  ],
+  "imagetable": {
+    "lua": "images/mod-icons",
+    "png": "source/images/mod-icons-table-14-14.png",
+    "svg": "images/svg/mod-icons-table-14-14.svg",
+    "frames": 12
+  },
+  "icons": {
+    "eye-off": {
+      "frame": 1,
+      "modifier": "blackout",
+      "source": "Pictogrammers Memory \"eye\" + slash, scaled from 22px",
+      "lua": "images/modifiers/eye-off",
+      "png": "source/images/modifiers/eye-off.png",
+      "svg": "images/svg/icons/eye-off.svg"
+    },
+    "music-note": {
+      "frame": 2,
+      "modifier": "too-loud",
+      "source": "Pictogrammers Memory \"music-note\", scaled from 22px",
+      "lua": "images/modifiers/music-note",
+      "png": "source/images/modifiers/music-note.png",
+      "svg": "images/svg/icons/music-note.svg"
+    },
+    "crosshair": {
+      "frame": 3,
+      "modifier": "hair-trigger",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/crosshair",
+      "png": "source/images/modifiers/crosshair.png",
+      "svg": "images/svg/icons/crosshair.svg"
+    },
+    "oil-slip": {
+      "frame": 4,
+      "modifier": "greased",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/oil-slip",
+      "png": "source/images/modifiers/oil-slip.png",
+      "svg": "images/svg/icons/oil-slip.svg"
+    },
+    "goo-drip": {
+      "frame": 5,
+      "modifier": "sticky",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/goo-drip",
+      "png": "source/images/modifiers/goo-drip.png",
+      "svg": "images/svg/icons/goo-drip.svg"
+    },
+    "both-ways": {
+      "frame": 6,
+      "modifier": "scrambled",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/both-ways",
+      "png": "source/images/modifiers/both-ways.png",
+      "svg": "images/svg/icons/both-ways.svg"
+    },
+    "four-pins": {
+      "frame": 7,
+      "modifier": "four-tumblers",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/four-pins",
+      "png": "source/images/modifiers/four-pins.png",
+      "svg": "images/svg/icons/four-pins.svg"
+    },
+    "drift-target": {
+      "frame": 8,
+      "modifier": "wandering",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/drift-target",
+      "png": "source/images/modifiers/drift-target.png",
+      "svg": "images/svg/icons/drift-target.svg"
+    },
+    "twin-marks": {
+      "frame": 9,
+      "modifier": "decoy",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/twin-marks",
+      "png": "source/images/modifiers/twin-marks.png",
+      "svg": "images/svg/icons/twin-marks.svg"
+    },
+    "skull": {
+      "frame": 10,
+      "modifier": "one-shot",
+      "source": "Pictogrammers Memory \"skull\", scaled from 22px",
+      "lua": "images/modifiers/skull",
+      "png": "source/images/modifiers/skull.png",
+      "svg": "images/svg/icons/skull.svg"
+    },
+    "peaked-cap": {
+      "frame": 11,
+      "modifier": "guard",
+      "source": "drawn on the 14x14 grid in images/svg/icons-pixel.js",
+      "lua": "images/modifiers/peaked-cap",
+      "png": "source/images/modifiers/peaked-cap.png",
+      "svg": "images/svg/icons/peaked-cap.svg"
+    },
+    "flask": {
+      "frame": 12,
+      "modifier": "nitro",
+      "source": "Pictogrammers Memory \"flask\", scaled from 22px",
+      "lua": "images/modifiers/flask",
+      "png": "source/images/modifiers/flask.png",
+      "svg": "images/svg/icons/flask.svg"
+    }
+  }
+}

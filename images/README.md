@@ -111,3 +111,113 @@ Edit scenes in `svg/comic.js` (scene primitives) and `svg/build-comic.js` (page 
 Scene primitives include `nekoFull` / `nekoCrouch` / `povNote` (bodies), `nekoSilhouette`
 (far-shot black cat), `windowFrame`, `excl` / `quest` (haloed marks), plus `rayTicks`
 (black manga impact wedges), `speedLines`, `moon`, `skyline`, `safe`.
+
+---
+
+## HUD layout experiments (`hud-*.png`)
+
+Six candidate play-screen layouts, each with **three modifier slots** (§12 of `game.md`) plus the
+dial, the run timer and the Ⓐ prompt. Built by `svg/build-hud.js` → `svg/hud.js`, rendered by
+`svg/_run-hud.sh` (SVG → canvas → **hard threshold to pure 1-bit** → `@2x` nearest-neighbour
+preview). No greys survive the threshold, so what you see is what the device shows.
+
+Icons are the real [Pictogrammers Memory](https://github.com/Pictogrammers/Memory) set on its
+native 22x22 pixel grid; the paths used here are vendored into `svg/memory-icons.json`, and the
+set also ships `playdate/memory-table-22-22.png` + `icon.lua` if we adopt it in-engine.
+
+| File | Layout | Dial radius | Modifiers shown as |
+|---|---|---|---|
+| `hud-01-vault-door` | Whole screen is the door: riveted plate, engraved timer, recessed dial well | 61 | Three bolted name plates, right column (name + effect) |
+| `hud-02-left-rail` | Black 112px rail on the left, dial takes the rest | **82** | Cards in the rail (icon + name) |
+| `hud-03-bottom-deck` | Dial floats high, console deck across the bottom | 74 | Three chips in the deck (name + effect) |
+| `hud-04-bolt-ring` | Modifiers *are* the door's locking bolts, on bolt-work spokes | 65 | Icon-only discs, no text |
+| `hud-05-lcd-console` | `iso-vault.webp` read: inverted LCD readout + alarm list | 74 | Rows under the readout (icon block + name + effect) |
+| `hud-06-minimal` | Closest to the current build, maximum dial | **98** | Small icon stack in the right margin |
+
+`hud-contact-sheet.png` shows all six at 1:1 for comparison.
+
+Trade-off in one line: 2 and 6 protect the dial, 1 and 5 sell the fantasy, 3 is the most legible
+mid-run, 4 is the only one that costs nothing in screen furniture.
+
+Rebuild: `node svg/build-hud.js && svg/_run-hud.sh "$(node -e '…jobs…')"` — see the jobs array
+in the git history of `svg/_run-hud.sh`.
+
+## Modifier icons (`source/images/modifiers/`)
+
+Twelve 14x14 1-bit icons, one per modifier in `game.md` §12. **Authored at 14x14, the size they
+display at**, so every pixel is a device pixel — no resampling. Eight are hand-drawn; four are
+[Pictogrammers Memory](https://github.com/Pictogrammers/Memory) art scaled from its native 22px
+grid (those four are the softer ones).
+
+### Where everything lives
+
+| What | Path |
+|---|---|
+| Drawn source (ASCII grids) | `svg/icons-pixel.js` |
+| Memory paths, vendored | `svg/memory-icons.json` |
+| One SVG per icon | `svg/icons/<icon-id>.svg` |
+| One PNG per icon, transparent | `../source/images/modifiers/<icon-id>.png` |
+| Imagetable, 12 frames | `../source/images/mod-icons-table-14-14.png` (loads as `images/mod-icons`) |
+| **id → path map** | `icons-manifest.json` |
+| Lua catalogue + loaders | `../source/modifiers.lua` |
+| Contact sheet | `hud-modifier-icons.png` |
+
+### id → icon → frame
+
+| # | Modifier | Icon id | Source |
+|---|---|---|---|
+| 1 | BLACKOUT | `eye-off` | Memory `eye` + slash |
+| 2 | TOO LOUD | `music-note` | Memory |
+| 3 | HAIR TRIGGER | `crosshair` | drawn |
+| 4 | GREASED | `oil-slip` | drawn |
+| 5 | STICKY | `goo-drip` | drawn |
+| 6 | SCRAMBLED | `both-ways` | drawn |
+| 7 | FOUR TUMBLERS | `four-pins` | drawn |
+| 8 | WANDERING | `drift-target` | drawn |
+| 9 | DECOY | `twin-marks` | drawn |
+| 10 | ONE SHOT | `skull` | Memory |
+| 11 | GUARD | `peaked-cap` | drawn |
+| 12 | NITRO | `flask` | Memory |
+
+### Using them
+
+```lua
+import "modifiers"
+
+local run, mode = Mods.roll(3)          -- a playable triple + "hard"/"normal"
+for i, m in ipairs(run) do
+    Mods.drawIcon(m.id, 10, 10 + i * 20)
+    gfx.drawText(m.name, 30, 10 + i * 20)
+end
+```
+
+`Mods.iconImage(iconId)` pulls from the imagetable (cheap, prefer it);
+`Mods.iconFile(iconId)` loads the standalone PNG.
+
+### Editing an icon
+
+Drawn icons are ASCII in `svg/icons-pixel.js` — `'#'` is black, every row must be 14 characters
+(the renderer throws otherwise). After editing:
+
+```sh
+cd images/svg
+node build-icon-files.js                       # SVGs + strip + manifest
+./_run-hud.sh "$(node build-icon-files.js --jobs)"   # PNGs into source/
+node build-modifier-icons.js && ./_run-hud.sh '[{"svg":"images/svg/hud-modifier-icons.svg","png":"images/hud-modifier-icons.png","w":452,"h":410,"zoom":2}]'
+```
+
+**Frame order in `Mods.iconFrames` must match `icons-manifest.json`.** Both are generated from the
+`ICONS` array in `svg/build-icon-files.js` — change the order there, not by hand.
+
+### Non-modifier glyphs on the same grid
+
+`icons-pixel.js` also carries the HUD's own 14x14 art, exported by the same `--jobs` run:
+
+| id | Ships as | Used by |
+|---|---|---|
+| `clock-14` | `source/images/clock-14.png` | the timer plate |
+| `btn-a` | `source/images/btn-a-14.png` | every Ⓐ prompt |
+| `btn-b` | `source/images/btn-b-14.png` | every Ⓑ prompt |
+
+These replaced the 22px `clock.png` / `btn-a.png` / `btn-b.png`, which were larger than the 13px
+label font they sat next to.
