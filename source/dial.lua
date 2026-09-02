@@ -2,14 +2,20 @@ local gfx <const> = playdate.graphics
 
 Art = {}
 
-Art.numFont = gfx.font.new("fonts/Nontendo-Bold")
-Art.sfxFont = gfx.font.new("fonts/Bouncy-30")
-Art.timerFont = gfx.font.new("fonts/Asheville-Mono-Light-24-px")
-Art.uiFont = gfx.font.new("fonts/Roobert-11-Medium")
-Art.subFont = gfx.font.new("fonts/font-Bitmore")
+-- Roobert throughout, with Bouncy-30 reserved for the manga SFX.
+-- NOTE: the SDK has no Roobert Medium below 11px — 10px exists only in Bold, and
+-- the "Halved" cuts measure identically to their parents. So the small UI face is
+-- Roobert-10-Bold; the only non-mono alternative at that size does not exist.
+Art.uiFont = gfx.font.new("fonts/Roobert-11-Medium")   -- headings, pause menu
+Art.numFont = gfx.font.new("fonts/Roobert-10-Bold")    -- HUD timer, Ⓐ/Ⓑ prompts
+Art.titleFont = gfx.font.new("fonts/Roobert-10-Bold")  -- modifier card titles
+Art.subFont = gfx.font.new("fonts/Roobert-11-Medium")  -- card subtitles (one line only)
+Art.dialFont = gfx.font.new("fonts/Roobert-10-Bold")   -- dial numerals
+Art.sfxFont = gfx.font.new("fonts/Bouncy-30")          -- manga SFX
+Art.timerFont = gfx.font.new("fonts/Roobert-20-Medium")-- win panel readout
 
--- All HUD glyphs are 14x14, matching the 13px label font.
 Art.iconClock14 = gfx.image.new("images/clock-14")
+Art.iconHand = gfx.image.new("images/hand-cursor")
 Art.iconA = gfx.image.new("images/btn-a-14")
 Art.iconB = gfx.image.new("images/btn-b-14")
 
@@ -19,7 +25,7 @@ local WIGGLE <const> = { 13, -10, 7, -4, 2, 0 }
 local numImages = {}
 
 local function makeNumberImage(text)
-    gfx.setFont(Art.numFont)
+    gfx.setFont(Art.dialFont)
     local w, h = gfx.getTextSize(text)
     local img = gfx.image.new(w + 2, h + 2)
     gfx.pushContext(img)
@@ -292,12 +298,13 @@ end
 -- as the digits change. Icon and text are both centred on the plate's midline.
 local TIMER_REF <const> = "00:00.00"
 
-function Art.drawTimerPlate(x, y, text)
-    gfx.setFont(Art.numFont)
-    local rw = gfx.getTextSize(TIMER_REF)
-    local _, th = gfx.getTextSize(text)
+-- The plate chrome only: black plate, checkered offset shadow, clock glyph.
+-- Static for the whole run, so it can be baked into the background image.
+-- Returns where the digits go, and the plate size.
+function Art.drawTimerPlate(x, y)
+    local rw = Art.numFont:getTextWidth(TIMER_REF)
+    local h = math.max(24, Art.numFont:getHeight() + 8)
     local w = 6 + 14 + 6 + rw + 8
-    local h = math.max(24, th + 8)
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.fillRoundRect(x + 4, y + 4, w, h, 4)
@@ -305,29 +312,40 @@ function Art.drawTimerPlate(x, y, text)
     gfx.fillRoundRect(x, y, w, h, 4)
     gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
     Art.iconClock14:draw(x + 6, y + math.floor((h - 14) / 2))
-    local inkTop, inkH = Art.inkBand(Art.numFont, Art.DIGITS)
-    gfx.drawText(text, x + 26, y + math.floor((h - inkH) / 2) - inkTop)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
-    return w, h
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.DIGITS)
+    return x + 26, y + math.floor((h - inkH) / 2) - inkTop, w, h
+end
+
+-- The digits, redrawn every frame over the baked plate.
+function Art.drawTimerText(tx, ty, text)
+    gfx.setFont(Art.numFont)
+    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+    gfx.drawText(text, tx, ty)
+    gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
 -- One modifier plate: scooped corners over a checkered offset shadow, then two
 -- rows — [icon | title] with the icon centred on the title, subtitle beneath at
 -- the title's x. `icon` is a 14x14 image or nil.
-function Art.drawModCard(x, y, w, h, icon, title, sub)
+-- A white plate with scooped corners over a checkered shadow offset down-right.
+-- Used by the modifier cards and by the pause menu, so they read as one family.
+function Art.drawPlate(x, y, w, h)
     local n <const> = CARD_NOTCH
-    local shape = notchedPoly(x, y, w, h, n)
-
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.fillPolygon(notchedPoly(x + 4, y + 4, w, h, n))
-
+    local shape = notchedPoly(x, y, w, h, n)
     gfx.setColor(gfx.kColorWhite)
     gfx.fillPolygon(shape)
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(2)
     gfx.drawPolygon(shape)
     gfx.setLineWidth(1)
+end
+
+function Art.drawModCard(x, y, w, h, icon, title, sub)
+    Art.drawPlate(x, y, w, h)
 
     -- Row 1 is [icon | title], the 14x14 icon drawn 1:1 and centred against the
     -- title's line. Row 2 is the subtitle, one size down, wrapped to 2 lines.
@@ -335,7 +353,7 @@ function Art.drawModCard(x, y, w, h, icon, title, sub)
     local textX = x + 9 + ICON + 6
     local availW = w - (textX - x) - 6
 
-    gfx.setFont(Art.numFont)
+    gfx.setFont(Art.titleFont)
     local _, th = gfx.getTextSize(title)
     gfx.setFont(Art.subFont)
     local _, lineH = gfx.getTextSize("Xy")
@@ -343,10 +361,9 @@ function Art.drawModCard(x, y, w, h, icon, title, sub)
     if sh > lineH * 2 then sh = lineH * 2 end
 
     local top = y + math.floor((h - (th + 3 + sh)) / 2)
-    local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
+    local inkTop, inkH = Art.inkBand(Art.titleFont, Art.CAPS)
     if icon then icon:draw(x + 9, top + inkTop + math.floor((inkH - ICON) / 2)) end
-    gfx.setFont(Art.numFont)
-    gfx.setFont(Art.numFont)
+    gfx.setFont(Art.titleFont)
     gfx.drawText(title, textX, top)
 
     gfx.setFont(Art.subFont)

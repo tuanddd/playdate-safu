@@ -20,15 +20,21 @@ local PLAY_CY <const> = 120
 local PLAY_R <const> = 52
 local WELL_R <const> = 64
 -- Three plates fill the door's right column: 20..214, three 58s and two 10 gaps.
-local CARD_X <const> = 232
+local CARD_X <const> = 226
 local CARD_Y <const> = 20
-local CARD_W <const> = 140
+local CARD_W <const> = 148
 local CARD_H <const> = 58
 local CARD_GAP <const> = 68
 local DEG_PER_UNIT <const> = 3.6
 local TOL <const> = 2.2
-local MAX_ENGAGE_SPEED <const> = 0.5
-local RESET_SPEED <const> = 1.6
+-- Speed gates are in dial units per SECOND, not per frame. Per-frame thresholds
+-- silently get stricter whenever the frame rate dips: at 22 fps the same hand
+-- speed produces 2.3x the per-frame delta, so a normal crank reads as TOO FAST.
+-- 25/s and 80/s are the old 0.5 and 1.6 per frame at the 50 fps target.
+local MAX_ENGAGE_SPEED <const> = 25
+local RESET_SPEED <const> = 80
+local DEAD_SPEED <const> = 1.5
+local TINY_TICK_SPEED <const> = 80
 local TICK_STEP <const> = 4
 local GAME_MS <const> = 60 * 1000
 local EXIT_MS <const> = 420
@@ -39,6 +45,7 @@ local STATE_PLAY <const> = 2
 local STATE_WIN <const> = 3
 local STATE_LOSE <const> = 4
 local STATE_TOTITLE <const> = 5
+local STATE_MENU <const> = 6
 
 local sfxImages = {
     kchik = Art.makeSfx("K-CHIK!", 1.3),
@@ -64,7 +71,21 @@ local shakeStart = -9999
 local effects = {}
 local lastTinyTick = 0
 local winPhase, winClock = 0, 0
+local losePhase, loseClock = 0, 0
+local losePanel = nil
+-- pause menu
+local menuImage = nil
+local menuIndex = 1
+local menuPage = "main"
+local menuClock = 0
+local modsPage = 1
+local MENU_ITEMS <const> = { "Resume", "Modifiers", "Quit" }
 local doorImage = nil
+-- The door, the dial well, the timer plate chrome and the three modifier cards
+-- never change during a run, so they are drawn once into this image and blitted
+-- each frame. Rebuilding them per frame cost 33 ms on device (see game.md §14).
+local bgImage = nil
+local timerTX, timerTY = 0, 0
 local winPanel = nil
 local exitImage = nil
 local exitClock = 0
@@ -130,6 +151,7 @@ local function startGame()
     dialPos = rawPos % 100
     targets = genTargets(dialPos)
     Run.mods, Run.mode = Mods.roll(3)
+    bgImage = nil
     tumbler = 1
     armed = true
     lastDetent = math.floor(dialPos / TICK_STEP)
@@ -138,12 +160,22 @@ local function startGame()
     effects = {}
     winPhase = 0
     winClock = 0
+    losePhase = 0
+    loseClock = 0
+    losePanel = nil
     doorImage = nil
     winPanel = nil
     exitImage = nil
     state = STATE_PLAY
     Sfx.start()
     Sfx.bgmStart()
+end
+
+-- milliseconds in the current frame, for turning per-frame deltas into per-second
+local frameMs = 20
+
+local function unitsPerSec(delta)
+    return math.abs(delta) * 1000 / math.max(frameMs, 1)
 end
 
 local function readCrank()
@@ -158,9 +190,9 @@ local function doTicks(delta)
     local detent = math.floor(dialPos / TICK_STEP)
     if detent ~= lastDetent then
         lastDetent = detent
-        local speed = math.abs(delta)
+        local speed = unitsPerSec(delta)
         Sfx.tick(speed)
-        if speed < 1.6 and now() - lastTinyTick > 900 and math.random() < 0.14 then
+        if speed < TINY_TICK_SPEED and now() - lastTinyTick > 900 and math.random() < 0.14 then
             lastTinyTick = now()
             local x, y = placeAround(tinyTick, 34)
             addEffect(tinyTick, x, y, 420)
@@ -203,7 +235,7 @@ local function tryHandle()
 end
 
 local function checkTumbler(delta)
-    local speed = math.abs(delta)
+    local speed = unitsPerSec(delta)
     if speed > RESET_SPEED then
         resetProgress(sfxImages.reset)
         return
@@ -219,7 +251,7 @@ local function checkTumbler(delta)
         return
     end
     if not armed then return end
-    if speed < 0.03 then return end
+    if speed < DEAD_SPEED then return end
     local dir = delta > 0 and 1 or -1
     if dir ~= need then return end
 
@@ -277,17 +309,24 @@ local function drawIconLabel(icon, text, cx, y, white)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
-local function drawModCards()
-    for i, m in ipairs(Run.mods) do
-        Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
-            Mods.iconImage(m.icon), m.name, m.sub)
-    end
+local function buildBackground()
+    local img = gfx.image.new(400, 240)
+    gfx.pushContext(img)
+        Art.drawDoor()
+        Art.drawDialWell(PLAY_CX, PLAY_CY, WELL_R)
+        timerTX, timerTY = Art.drawTimerPlate(24, 20)
+        for i, m in ipairs(Run.mods or {}) do
+            Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
+                Mods.iconImage(m.icon), m.name, m.sub)
+        end
+    gfx.popContext()
+    return img
 end
 
 local function drawHud()
-    Art.drawTimerPlate(24, 20, formatTime(remaining))
-    drawModCards()
-    drawIconLabel(Art.iconA, "OPEN?", PLAY_CX, 192, false)
+    Art.drawTimerText(timerTX, timerTY, formatTime(remaining))
+    drawIconLabel(Art.iconA, "OPEN?", PLAY_CX, 186, false)
+    drawIconLabel(Art.iconB, "MENU", PLAY_CX, 204, false)
     if showFps then pd.drawFPS(370, 224) end
 end
 
@@ -324,7 +363,8 @@ local function drawEffects()
 end
 
 local function drawScene()
-    Art.drawDoor()
+    if not bgImage then bgImage = buildBackground() end
+    bgImage:draw(0, 0)
     local ox, oy = 0, 0
     local sage = now() - shakeStart
     if sage < 220 then
@@ -332,13 +372,13 @@ local function drawScene()
         ox = math.sin(sage / 15) * amp
         oy = math.cos(sage / 11) * amp * 0.7
     end
-    Art.drawDialWell(PLAY_CX, PLAY_CY, WELL_R)
     Art.drawDial(PLAY_CX + ox, PLAY_CY + oy, PLAY_R, dialPos)
     drawHud()
     drawEffects()
 end
 
 local function updatePlay(dt)
+    frameMs = dt
     if pd.isCrankDocked() then
         gfx.setColor(gfx.kColorBlack)
         return
@@ -352,6 +392,8 @@ local function updatePlay(dt)
     if remaining <= 0 and state == STATE_PLAY then
         remaining = 0
         state = STATE_LOSE
+        losePhase = 1
+        loseClock = 0
         Sfx.fail()
         effects = {}
         Sfx.bgmStop()
@@ -391,6 +433,38 @@ local function buildWinPanel()
     return img
 end
 
+local function buildLosePanel()
+    local img = gfx.image.new(400, 240, gfx.kColorBlack)
+    gfx.pushContext(img)
+        local f = sfxImages.timeup.frames[1]
+        f.img:draw(200 - f.hw, 76 - f.hh)
+        gfx.setFont(Art.uiFont)
+        gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+        gfx.drawTextAligned("TUMBLERS FOUND", 200, 118, kTextAlignment.center)
+        gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        Art.drawDots(200, 146, tumbler - 1, true)
+        drawIconLabel(Art.iconA, "TRY AGAIN", 200, 180, true)
+        drawIconLabel(Art.iconB, "TITLE", 200, 206, true)
+    gfx.popContext()
+    return img
+end
+
+-- The lose panel slides down over the frozen scene, the mirror of the win panel
+-- and of the Ⓑ slide-up back to the title.
+local function updateLose(dt)
+    loseClock = loseClock + dt
+    readCrank()
+    if losePhase == 1 and loseClock > 700 then
+        doorImage = gfx.getDisplayImage()
+        losePanel = buildLosePanel()
+        losePhase = 2
+        loseClock = 0
+    elseif losePhase == 2 and loseClock > 460 then
+        losePhase = 3
+        loseClock = 0
+    end
+end
+
 local function updateWin(dt)
     winClock = winClock + dt
     readCrank()
@@ -421,15 +495,18 @@ local function drawWin()
 end
 
 local function drawLose()
-    gfx.clear(gfx.kColorBlack)
-    gfx.setFont(Art.uiFont)
-    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
-    gfx.drawTextAligned("TUMBLERS FOUND", 200, 128, kTextAlignment.center)
-    gfx.setImageDrawMode(gfx.kDrawModeCopy)
-    Art.drawDots(CX, 164, tumbler - 1, true)
-    drawIconLabel(Art.iconA, "TRY AGAIN", 200, 190, true)
-    drawIconLabel(Art.iconB, "TITLE", 200, 214, true)
-    drawEffects()
+    if losePhase == 1 then
+        drawScene()
+        return
+    end
+    if losePhase == 2 then
+        doorImage:draw(0, 0)
+        local t = math.min(loseClock / 460, 1)
+        local e = 1 - (1 - t) * (1 - t) * (1 - t)
+        losePanel:draw(0, math.floor(-240 + 240 * e))
+    else
+        losePanel:draw(0, 0)
+    end
 end
 
 local function drawTitle()
@@ -457,6 +534,139 @@ local function drawToTitle()
     exitImage:draw(0, math.floor(-240 * e))
 end
 
+-- ---------------------------------------------------------------------------
+-- Pause menu. Everything behind it is frozen: the screen is captured on open and
+-- blitted underneath, and update() runs none of the play logic while it is up.
+
+local function openMenu()
+    menuImage = gfx.getDisplayImage()
+    menuIndex = 1
+    menuPage = "main"
+    menuClock = 0
+    state = STATE_MENU
+end
+
+local function closeMenu()
+    menuImage = nil
+    state = STATE_PLAY
+end
+
+-- The panel is sized to its content and no larger. `measures` is every string
+-- that has to fit, each with the font it will be drawn in — including the
+-- subtitles, which are wider than the names they sit under.
+local function menuBox(measures, rowCount, rowH)
+    local w = 0
+    for _, m in ipairs(measures) do
+        gfx.setFont(m[2])
+        local lw = gfx.getTextSize(m[1])
+        if lw > w then w = lw end
+    end
+    local PADX <const>, PADY <const> = 16, 14
+    local boxW = PADX * 2 + 24 + w
+    local boxH = PADY * 2 + rowCount * rowH
+    return math.floor(200 - boxW / 2), math.floor(120 - boxH / 2), boxW, boxH, PADX, PADY
+end
+
+-- Pokes at the row along X rather than rotating, so it reads as pointing.
+local function drawCursor(x, y)
+    local poke = math.floor((math.sin(menuClock / 170) + 1) * 2.5)
+    Art.iconHand:draw(x + poke, y)
+end
+
+local function drawMenu()
+    if menuImage then menuImage:draw(0, 0) end
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillRect(0, 0, 400, 240)
+    gfx.setColor(gfx.kColorBlack)
+
+    if menuPage == "mods" then
+        -- Catalogue of every modifier, not just this run's: 12 across two pages,
+        -- a 2x3 grid of cells laid out like the door's modifier cards.
+        local COLS <const>, ROWS <const> = 2, 3
+        local PER <const> = COLS * ROWS
+        -- Sized to the content, not the screen: a cell only has to hold the
+        -- longest title (FOUR TUMBLERS, 107px + the 20px icon column) and wrap
+        -- the longest subtitle (188px) onto two lines.
+        local CELL_W <const>, CELL_H <const> = 134, 42
+        local COL_GAP <const>, ROW_GAP <const> = 10, 6
+        local PADX <const>, PADY <const> = 14, 10
+        local boxW = PADX * 2 + COLS * CELL_W + COL_GAP
+        local boxH = PADY * 2 + ROWS * CELL_H + (ROWS - 1) * ROW_GAP + 14
+        local bx, by = math.floor(200 - boxW / 2), math.floor(120 - boxH / 2)
+        Art.drawPlate(bx, by, boxW, boxH)
+
+        local pages = math.ceil(#Mods.list / PER)
+        local first = (modsPage - 1) * PER + 1
+        for i = 0, PER - 1 do
+            local m = Mods.list[first + i]
+            if m then
+                local cx = bx + PADX + (i % COLS) * (CELL_W + COL_GAP)
+                local cy = by + PADY + math.floor(i / COLS) * (CELL_H + ROW_GAP)
+                local icon = Mods.iconImage(m.icon)
+                if icon then icon:draw(cx, cy + 1) end
+                local tx = cx + 20
+                gfx.setFont(Art.titleFont)
+                gfx.drawText(m.name, tx, cy)
+                gfx.setFont(Art.subFont)
+                gfx.drawTextInRect(m.sub, tx, cy + 14, CELL_W - 20, 22)
+            end
+        end
+
+        gfx.setFont(Art.numFont)
+        gfx.drawTextAligned(string.format("< %d/%d >", modsPage, pages),
+            200, by + boxH - 16, kTextAlignment.center)
+        return
+    end
+
+    local rowH <const> = 24
+    local measures = {}
+    for i, l in ipairs(MENU_ITEMS) do measures[i] = { l, Art.numFont } end
+    local x, y, w, h, padX, padY = menuBox(measures, #MENU_ITEMS, rowH)
+    Art.drawPlate(x, y, w, h)
+    gfx.setFont(Art.numFont)
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
+    for i, label in ipairs(MENU_ITEMS) do
+        local ry = y + padY + (i - 1) * rowH
+        if i == menuIndex then drawCursor(x + padX, ry + math.floor((inkH - 16) / 2) + inkTop) end
+        gfx.drawText(label, x + padX + 24, ry)
+    end
+end
+
+local function updateMenu(dt)
+    menuClock = menuClock + dt
+    pd.getCrankChange()   -- drain, or the crank jumps when play resumes
+    if menuPage == "mods" then
+        local pages = math.ceil(#Mods.list / 6)
+        if pd.buttonJustPressed(pd.kButtonRight) or pd.buttonJustPressed(pd.kButtonDown) then
+            modsPage = modsPage % pages + 1
+        elseif pd.buttonJustPressed(pd.kButtonLeft) or pd.buttonJustPressed(pd.kButtonUp) then
+            modsPage = (modsPage - 2) % pages + 1
+        elseif pd.buttonJustPressed(pd.kButtonB) or pd.buttonJustPressed(pd.kButtonA) then
+            menuPage = "main"
+        end
+        return
+    end
+    if pd.buttonJustPressed(pd.kButtonUp) then
+        menuIndex = (menuIndex - 2) % #MENU_ITEMS + 1
+    elseif pd.buttonJustPressed(pd.kButtonDown) then
+        menuIndex = menuIndex % #MENU_ITEMS + 1
+    elseif pd.buttonJustPressed(pd.kButtonB) then
+        closeMenu()
+    elseif pd.buttonJustPressed(pd.kButtonA) then
+        local pick = MENU_ITEMS[menuIndex]
+        if pick == "Resume" then
+            closeMenu()
+        elseif pick == "Modifiers" then
+            menuPage = "mods"
+            modsPage = 1
+        else
+            menuImage = nil
+            startToTitle()
+        end
+    end
+end
+
 function pd.update()
     local t = now()
     local dt = t - lastTime
@@ -469,17 +679,25 @@ function pd.update()
         drawTitle()
         if pd.buttonJustPressed(pd.kButtonA) then startGame() end
     elseif state == STATE_PLAY then
-        if pd.buttonJustPressed(pd.kButtonB) then showFps = not showFps end
-        if pd.buttonJustPressed(pd.kButtonA) and not pd.isCrankDocked() then tryHandle() end
-        local docked = pd.isCrankDocked()
-        updatePlay(dt)
-        if state == STATE_PLAY then
-            drawScene()
-            if docked then drawDockedNotice() end
-        elseif state == STATE_WIN then
-            drawScene()
+        if pd.buttonJustPressed(pd.kButtonB) then
+            -- Open and draw, but do NOT run updateMenu this frame: buttonJustPressed
+            -- is still true for the rest of it, and the menu's own Ⓑ handler would
+            -- read the same press and close again immediately.
+            drawScene()          -- freeze a current frame for the menu to sit on
+            openMenu()
+            drawMenu()
         else
-            drawLose()
+            if pd.buttonJustPressed(pd.kButtonA) and not pd.isCrankDocked() then tryHandle() end
+            local docked = pd.isCrankDocked()
+            updatePlay(dt)
+            if state == STATE_PLAY then
+                drawScene()
+                if docked then drawDockedNotice() end
+            elseif state == STATE_WIN then
+                drawScene()
+            else
+                drawLose()
+            end
         end
     elseif state == STATE_WIN then
         updateWin(dt)
@@ -497,10 +715,17 @@ function pd.update()
             exitImage = nil
             state = STATE_TITLE
         end
+    elseif state == STATE_MENU then
+        updateMenu(dt)
+        if state == STATE_MENU then drawMenu()
+        elseif state == STATE_PLAY then drawScene() end
     else
+        updateLose(dt)
         drawLose()
-        if pd.buttonJustPressed(pd.kButtonA) then startGame() end
-        if pd.buttonJustPressed(pd.kButtonB) then startToTitle() end
+        if losePhase == 3 then
+            if pd.buttonJustPressed(pd.kButtonA) then startGame() end
+            if pd.buttonJustPressed(pd.kButtonB) then startToTitle() end
+        end
     end
 
     pd.timer.updateTimers()

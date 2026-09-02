@@ -15,6 +15,11 @@ local gfx <const> = playdate.graphics
 
 Mods = {}
 
+-- Dial units per second. WANDERING's spots may not drift faster than this: the
+-- player has to be able to close on a moving target while staying under the
+-- latch ceiling (MAX_ENGAGE_SPEED = 25/sec), so the drift gets a fifth of it.
+Mods.MAX_DRIFT = 5
+
 Mods.ICON_W = 14
 Mods.ICON_H = 14
 -- pdc strips the -table-w-h suffix: source/images/mod-icons-table-14-14.png
@@ -39,24 +44,28 @@ Mods.iconFrames = {
     ["flask"] = 12,
 }
 
--- `sub` is the card's second row: sentence case, one size below the title, and
--- wrapped to **at most 2 lines** in the 140px plate — roughly 34 characters.
--- Longer text is clipped, not shrunk.
+-- `sub` is the card's second row, set in Roobert-11-Medium. That face has a 22px
+-- line box and the card only has ~41px under the title, so a subtitle must fit
+-- on ONE line of the 113px column — about 14 characters. Longer text clips.
 -- axis and tags are FLAVOUR ONLY — legality is decided per pair below, not by axis
 -- (game.md §12, "Modes and combinations").
 Mods.list = {
-    { id = "blackout",      name = "BLACKOUT",      sub = "The dial is not drawn",     axis = "perception", tags = { "channel" }, icon = "eye-off" },
-    { id = "too-loud",      name = "TOO LOUD",      sub = "Ticks buried in noise",    axis = "perception", tags = { "channel" }, icon = "music-note" },
-    { id = "hair-trigger",  name = "HAIR TRIGGER",  sub = "Only a crawl will latch",  axis = "motor",      tags = {},            icon = "crosshair" },
-    { id = "greased",       name = "GREASED",       sub = "It coasts after you stop",     axis = "motor",      tags = {},            icon = "oil-slip" },
-    { id = "sticky",        name = "STICKY",        sub = "Shove it to get moving",     axis = "motor",      tags = {},            icon = "goo-drip" },
-    { id = "scrambled",     name = "SCRAMBLED",     sub = "Each turn goes either way",     axis = "memory",     tags = {},            icon = "both-ways" },
-    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Four spots, not three",   axis = "memory",     tags = { "time" },    icon = "four-pins" },
-    { id = "wandering",     name = "WANDERING",     sub = "Spots drift while you idle",   axis = "memory",     tags = {},            icon = "drift-target" },
-    { id = "decoy",         name = "DECOY",         sub = "One spot is a lie",   axis = "risk",       tags = {},            icon = "twin-marks" },
-    { id = "one-shot",      name = "ONE SHOT",      sub = "A wrong pull ends the run",   axis = "risk",       tags = { "fail" },    icon = "skull" },
-    { id = "guard",         name = "GUARD",         sub = "Freeze when you hear steps",   axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
-    { id = "nitro",         name = "NITRO",         sub = "Keep the device level",   axis = "body",       tags = { "fail" },    icon = "flask" },
+    { id = "blackout",      name = "BLACKOUT",      sub = "No dial",     axis = "perception", tags = { "channel" }, icon = "eye-off" },
+    { id = "too-loud",      name = "TOO LOUD",      sub = "Ticks buried",    axis = "perception", tags = { "channel" }, icon = "music-note" },
+    { id = "hair-trigger",  name = "HAIR TRIGGER",  sub = "Crawl only",  axis = "motor",      tags = {},            icon = "crosshair" },
+    { id = "greased",       name = "GREASED",       sub = "It coasts",     axis = "motor",      tags = {},            icon = "oil-slip" },
+    { id = "sticky",        name = "STICKY",        sub = "Shove it",     axis = "motor",      tags = {},            icon = "goo-drip" },
+    { id = "scrambled",     name = "SCRAMBLED",     sub = "Random turn",     axis = "memory",     tags = {},            icon = "both-ways" },
+    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Four spots",   axis = "memory",     tags = { "time" },    icon = "four-pins" },
+    -- DRIFT MUST STAY WELL UNDER MAX_ENGAGE_SPEED (25 units/sec, main.lua). A spot
+    -- that drifts at or above the speed you are allowed to latch at is literally
+    -- uncatchable: closing on it fast enough to keep up is itself a graze.
+    -- Mods.MAX_DRIFT is the ceiling the effect must honour.
+    { id = "wandering",     name = "WANDERING",     sub = "Spots drift",   axis = "memory",     tags = {},            icon = "drift-target" },
+    { id = "decoy",         name = "DECOY",         sub = "One is fake",   axis = "risk",       tags = {},            icon = "twin-marks" },
+    { id = "one-shot",      name = "ONE SHOT",      sub = "One try",   axis = "risk",       tags = { "fail" },    icon = "skull" },
+    { id = "guard",         name = "GUARD",         sub = "Stop moving",   axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
+    { id = "nitro",         name = "NITRO",         sub = "Keep it level",   axis = "body",       tags = { "fail" },    icon = "flask" },
 }
 
 Mods.byId = {}

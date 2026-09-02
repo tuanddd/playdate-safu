@@ -39,10 +39,12 @@ local function after(ms, fn)
     playdate.timer.performAfterDelay(ms, fn)
 end
 
+-- `speed` is dial units per SECOND (main.lua normalises it, so the tick sounds
+-- the same whatever the frame rate). 150/s is the old cap of 3 units/frame.
 function Sfx.tick(speed)
     local v = tickVoices[tickIdx]
     tickIdx = tickIdx % #tickVoices + 1
-    local s = math.min(speed, 3)
+    local s = math.min(speed, 150) / 50
     v:setRate(0.94 + s * 0.05 + math.random() * 0.06)
     v:setVolume(0.26 + s * 0.06)
     v:play(1)
