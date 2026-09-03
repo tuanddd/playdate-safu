@@ -46,6 +46,11 @@ lockedVoice:setADSR(0, 0.09, 0, 0.06)
 local fakeVoice = snd.sampleplayer.new(fakeSample)
 local footstepVoice = snd.sampleplayer.new(footstepSample)
 
+-- BLACKOUT's opening. Two clicks, 210 ms apart: the switch going down, then the
+-- beam catching. main.lua's BLACKOUT_CLICK_MS is that gap, so the cone lands on
+-- the second one - retime it if this file is ever replaced.
+local flashlightVoice = snd.sampleplayer.new("sounds/flashlight")
+
 -- SCRAMBLED's wrong-direction tell: "it is here, but not this way". Deliberately
 -- dull and low so it never reads as a latch. Audio only, by design - a text cue
 -- would give the direction away for free (game.md SS12).
@@ -55,6 +60,12 @@ wrongVoice:setADSR(0.004, 0.09, 0, 0.06)
 -- TOO LOUD ducks every mechanism sound under the music. 1.0 is unmodified.
 local mechVol = 1.0
 function Sfx.setMechVolume(v) mechVol = v or 1.0 end
+
+-- The title bed. Its own player, so returning to the title never has to care
+-- which of the three run tracks was loaded into `bgm`.
+local titleBgm = snd.fileplayer.new("sounds/title")
+local titleVol <const> = 0.35
+titleBgm:setVolume(titleVol)
 
 local bgm = snd.fileplayer.new("sounds/bgm")
 bgm:setVolume(0.12)
@@ -126,6 +137,13 @@ function Sfx.footstep()
     footstepVoice:play(1)
 end
 
+-- Never ducked: it is the run announcing itself, and BLACKOUT is banned with
+-- TOO LOUD anyway, so nothing is competing with it.
+function Sfx.flashlight()
+    flashlightVoice:setVolume(1.0)
+    flashlightVoice:play(1)
+end
+
 function Sfx.handle()
     sweetVoice:setVolume(1.0)
     sweetVoice:setRate(1.0)
@@ -157,6 +175,7 @@ end
 -- default bed, TOO LOUD's club track, or GUARD's night ambience. TOO LOUD and
 -- GUARD are a banned pair, so two beds can never be asked for at once.
 function Sfx.bgmStart(track, vol)
+    titleBgm:stop()
     bgm:stop()
     if track and track ~= currentTrack then
         bgm:load(track)
@@ -176,12 +195,15 @@ function Sfx.bgmDuck(on)
     bgm:setVolume(on and bgmVol * 0.28 or bgmVol)
 end
 
--- Everything the title screen should sound like. Called on every route back to
--- the title, so no run's music can survive into it. There is no title track yet;
--- when there is, start it here and nowhere else.
+-- Everything the title screen should sound like. Called on boot and on every
+-- route back to the title, so no run's music can survive into it. The title bed
+-- loops until startGame stops it, and restarts from the top each time you come
+-- back - the track is short enough that resuming mid-phrase would read as a bug.
 function Sfx.titleAudio()
     bgm:stop()
-    -- TODO: title BGM goes here, e.g. titleBgm:play(0)
+    titleBgm:stop()
+    titleBgm:setVolume(titleVol)
+    titleBgm:play(0)
 end
 
 function Sfx.start()

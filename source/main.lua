@@ -37,7 +37,7 @@ local RESET_SPEED <const> = 80
 local DEAD_SPEED <const> = 1.5
 local TINY_TICK_SPEED <const> = 80
 local TICK_STEP <const> = 4
-local GAME_MS <const> = 60 * 1000
+local GAME_MS <const> = 3 * 60 * 1000
 local EXIT_MS <const> = 420
 local DIRS <const> = { 1, -1, 1 }
 
@@ -62,7 +62,7 @@ local sfxImages = {
     boom = Art.makeSfx("BOOM!", 2.1, false),
     -- GUARD's `// \\`: built by hand rather than set in the SFX font, which has
     -- no slash glyphs, but the same frames/fades shape as the rest.
-    marks = Art.makeMarks(1.2),
+    marks = Art.makeSlashes(nil, 1.2),
 }
 local tinyTick = Art.makeTiny("tik")
 -- Performance probe. Toggled from the system menu, because Ⓑ became the pause
@@ -183,7 +183,24 @@ local surge, surgeTo, surgeAt, surgeUntil = 0, 0, 0, 0
 local FLASH_X <const> = 300
 local FLASH_Y <const> = 272
 local blackoutBg = nil
-local notes = {}           -- TOO LOUD: music notes crossing the screen
+local blackoutDark = nil   -- the same room with the torch still off
+-- BLACKOUT's opening: the lights are still on, they die, the room sits black for
+-- a beat, then the torch comes up. The run is frozen for all of it - the clock
+-- does not run and the dial cannot be worked, so nothing is lost to a cutscene.
+local BLACKOUT_LIT_MS <const> = 400
+local BLACKOUT_FADE_MS <const> = 650
+local BLACKOUT_DARK_MS <const> = 260
+-- The gap between the two clicks in flashlight.wav. The cone appears on the
+-- second one, so the sound starts this far ahead of it.
+local BLACKOUT_CLICK_MS <const> = 210
+local BLACKOUT_MS <const> =
+    BLACKOUT_LIT_MS + BLACKOUT_FADE_MS + BLACKOUT_DARK_MS + BLACKOUT_CLICK_MS
+local blackoutClock = nil  -- nil once the opening is over, or if it never ran
+local flashClicked = false
+-- Every "something out there made a noise" cue queues here: TOO LOUD's notes and
+-- GUARD's marks are the same event to the player, so they animate identically.
+-- See DROP_* below for the animation itself.
+local drops = {}
 local noteAt = 0
 local noteBurst = nil
 local nitroAngle, nitroVel = 0, 0   -- NITRO: surface tilt, a damped spring
@@ -334,9 +351,16 @@ local function startGame(forced)
     Run.tilt = 0
     nitroAngle, nitroVel = 0, 0
     for i = 1, WATER_N do wh[i], wv[i] = 0, 0 end
-    notes = {}
+    drops = {}
     noteAt = now() + 600
     blackoutBg = nil
+    blackoutDark = nil
+    -- Not `drawDial and nil or 0`: `x and nil` is always nil, so the `or` fired
+    -- on every run and the opening - the 1.5s freeze and its torch click - ran
+    -- whether or not BLACKOUT was rolled.
+    blackoutClock = nil
+    if not Run.cfg.drawDial then blackoutClock = 0 end
+    flashClicked = false
     wrongTold = true
     loseReason = "timeup"
     if Run.cfg.nitro then pd.startAccelerometer() else pd.stopAccelerometer() end
@@ -392,6 +416,42 @@ local function doTicks(delta)
     end
 end
 
+-- TITLE SCREEN. The dial turns itself so the screen is never dead, and an
+-- occasional latch makes it look like the mechanism is being worked rather than
+-- idling. Touching the crank hands control over immediately; TITLE_IDLE_MS after
+-- the last crank movement, auto turning resumes from wherever it was left.
+local TITLE_AUTO_UPS <const> = 11        -- dial units per second, clockwise
+local TITLE_IDLE_MS <const> = 4000
+local TITLE_LATCH_MIN <const> = 2600
+local TITLE_LATCH_MAX <const> = 5200
+local titleCrankAt = nil                 -- nil until the crank is first touched
+local titleLatchAt = nil
+
+local function updateTitleDial(dt)
+    local delta = readCrank()
+    local t = now()
+    if math.abs(delta) > 0.0005 then
+        titleCrankAt = t
+        -- Pushed out so taking your hand off does not fire a latch on the very
+        -- first auto frame
+        titleLatchAt = t + math.random(TITLE_LATCH_MIN, TITLE_LATCH_MAX)
+    end
+    if not titleCrankAt or t - titleCrankAt >= TITLE_IDLE_MS then
+        delta = TITLE_AUTO_UPS * dt / 1000
+        rawPos = rawPos + delta
+        dialPos = (rawPos + posOffset) % 100
+        if not titleLatchAt then
+            titleLatchAt = t + math.random(TITLE_LATCH_MIN, TITLE_LATCH_MAX)
+        elseif t >= titleLatchAt then
+            titleLatchAt = t + math.random(TITLE_LATCH_MIN, TITLE_LATCH_MAX)
+            Sfx.sweetSpot()
+            local x, y = placeAround(sfxImages.kchik, 32)
+            addEffect(sfxImages.kchik, x, y, 680)
+        end
+    end
+    doTicks(delta)
+end
+
 local function resetProgress(set)
     if tumbler > 1 then
         tumbler = 1
@@ -414,6 +474,7 @@ local function loseRun(reason)
     Sfx.bgmStop()
     pd.stopAccelerometer()
     effects = {}
+    drops = {}
     addEffect(sfxImages[reason == "boom" and "boom" or "caught"], 200, 78, 100000)
 end
 
@@ -651,10 +712,93 @@ local function buildBlackout()
     return img
 end
 
-local function drawNotes()
-    if #notes == 0 or not noteBurst then return end
-    for _, nt in ipairs(notes) do
-        noteBurst.img:draw(nt.x - noteBurst.hw, nt.y - noteBurst.hh)
+-- The middle frame of the opening: the same room, before the torch. Nothing is
+-- lit, so nothing is drawn - but it is a real layer, not a fill, because the
+-- fade has to land on exactly the image the cone will replace.
+local function buildBlackoutDark()
+    return gfx.image.new(400, 240, gfx.kColorBlack)
+end
+
+-- One entrance for every sound cue. It starts wholly above the top edge, slides
+-- in on an ease-out while it fades up from 20% and grows from 80%, holds for a
+-- beat, then eases away to nothing. Notes used to fly diagonally across the
+-- screen and marks used to pop in place; both now read as the same event.
+--
+-- The whole thing is 700 ms: these are peripheral cues, and anything slower
+-- reads as a thing to look at rather than a thing to notice.
+local DROP_IN_MS <const> = 300
+local DROP_HOLD_MS <const> = 100
+local DROP_OUT_MS <const> = 300
+local DROP_MS <const> = DROP_IN_MS + DROP_HOLD_MS + DROP_OUT_MS
+local DROP_REST_Y <const> = 34
+local DROP_ALPHA0 <const> = 0.2   -- the 80% scale floor lives in dial.lua's DROP_MIN
+-- The strip of the top edge a cue is allowed to occupy: clear of the clock badge
+-- and its dropped shadow on the left (they end at x=113), clear of the card
+-- column on the right (its border starts at x=225). Nothing a cue can cross is
+-- load-bearing, so nothing has to be drawn back over the top of one.
+local DROP_L <const> = 118
+local DROP_R <const> = 221
+-- Two at once is the ceiling and they may never touch: stacked cues read as one
+-- smear. The strip is 103px wide against an 84px cue, so the second slot is
+-- usually refused - which is the point, not a bug.
+local DROP_MAX <const> = 2
+local DROP_GAP <const> = 10
+
+local function addDrop(set)
+    if #drops >= DROP_MAX then return end
+    local lo, hi = math.floor(DROP_L + set.hw), math.floor(DROP_R - set.hw)
+    if lo > hi then lo = (DROP_L + DROP_R) // 2; hi = lo end
+    for _ = 1, 14 do
+        local x = math.random(lo, hi)
+        local clear = true
+        for _, d in ipairs(drops) do
+            if math.abs(d.x - x) < d.set.hw + set.hw + DROP_GAP then
+                clear = false
+                break
+            end
+        end
+        if clear then
+            drops[#drops + 1] = { set = set, x = x, born = now() }
+            return
+        end
+    end
+end
+
+-- Ease-out both ways: fast off the mark, settling into the rest position and out
+-- of it again. Linear read as a slide rather than a snap.
+local function easeOut(q)
+    local i = 1 - q
+    return 1 - i * i * i
+end
+
+local function drawDrops()
+    local t = now()
+    local i = 1
+    while i <= #drops do
+        local d = drops[i]
+        local age = t - d.born
+        if age > DROP_MS then
+            table.remove(drops, i)
+        else
+            local set = d.set
+            local n = #set.steps
+            local y, alpha, idx
+            if age < DROP_IN_MS then
+                local e = easeOut(age / DROP_IN_MS)
+                y = -set.hh - 6 + (DROP_REST_Y + set.hh + 6) * e
+                alpha = DROP_ALPHA0 + (1 - DROP_ALPHA0) * e
+                idx = math.floor(e * (n - 1)) + 1
+            elseif age < DROP_IN_MS + DROP_HOLD_MS then
+                y, alpha, idx = DROP_REST_Y, 1, n
+            else
+                local e = easeOut((age - DROP_IN_MS - DROP_HOLD_MS) / DROP_OUT_MS)
+                y, alpha, idx = DROP_REST_Y - 10 * e, 1 - e, n
+            end
+            local step = set.steps[math.max(1, math.min(n, idx))]
+            step.img:drawFaded(d.x - step.hw, y - step.hh, alpha,
+                gfx.image.kDitherTypeBayer4x4)
+            i = i + 1
+        end
     end
 end
 
@@ -664,21 +808,9 @@ local function drawNitro()
         math.min(math.abs(nitroAngle) / NITRO_SPILL, 1))
 end
 
-local function drawScene()
-    local cfg = Run.cfg
-    if cfg and not cfg.drawDial then
-        if not blackoutBg then
-            local t0 = now()
-            blackoutBg = buildBlackout()
-            bakeMs = now() - t0
-        end
-        blackoutBg:draw(0, 0)
-        Art.drawTimerText(timerTX, timerTY, formatTime(remaining))
-        drawPerf()
-        -- no dial, no shake, no SFX text, and no Ⓐ prompt: the run is played by ear
-        return
-    end
-
+-- The room with the lights on: every run that is not BLACKOUT, and the first
+-- 400 ms of one that is.
+local function drawLitScene()
     if not bgImage then
         local t0 = now()
         bgImage = buildBackground()
@@ -693,10 +825,58 @@ local function drawScene()
         oy = math.cos(sage / 11) * amp * 0.7
     end
     Art.drawDial(PLAY_CX + ox, PLAY_CY + oy, PLAY_R, dialPos)
+    drawDrops()            -- before the HUD: the clock and the cards win
     drawHud()
     drawEffects()
-    drawNotes()
     drawNitro()   -- last: the spirit level sits over everything
+end
+
+-- BLACKOUT's opening, in three frames: the lit room, the same room going under a
+-- thickening dither, then flat black. The torch is not in it - the cone layer
+-- taking over from the dark one IS the torch coming on, which is why the two are
+-- separate images rather than one drawn in stages.
+local function drawBlackoutIntro()
+    local t = blackoutClock
+    if t < BLACKOUT_LIT_MS + BLACKOUT_FADE_MS then
+        drawLitScene()
+        if t >= BLACKOUT_LIT_MS then
+            -- setDitherPattern takes transparency, not coverage (game.md SS12c):
+            -- 0 is solid, 1 draws nothing. Bayer8x8 has the finest steps.
+            gfx.setColor(gfx.kColorBlack)
+            gfx.setDitherPattern(1 - (t - BLACKOUT_LIT_MS) / BLACKOUT_FADE_MS,
+                gfx.image.kDitherTypeBayer8x8)
+            gfx.fillRect(0, 0, 400, 240)
+            gfx.setColor(gfx.kColorBlack)   -- setColor is what clears the pattern
+        end
+        return
+    end
+    if not blackoutDark then blackoutDark = buildBlackoutDark() end
+    blackoutDark:draw(0, 0)
+    -- Baked here, in the dark, where a dropped frame cannot be seen: the cone
+    -- has to be on screen the instant the second click lands.
+    if not blackoutBg then
+        local t0 = now()
+        blackoutBg = buildBlackout()
+        bakeMs = now() - t0
+    end
+end
+
+local function drawScene()
+    local cfg = Run.cfg
+    if cfg and not cfg.drawDial then
+        if blackoutClock then
+            drawBlackoutIntro()
+            return
+        end
+        if not blackoutBg then blackoutBg = buildBlackout() end
+        blackoutBg:draw(0, 0)
+        Art.drawTimerText(timerTX, timerTY, formatTime(remaining))
+        drawPerf()
+        -- no dial, no shake, no SFX text, and no Ⓐ prompt: the run is played by ear
+        return
+    end
+
+    drawLitScene()
 end
 
 -- WANDERING: the spots creep only while the dial is still, so holding steady to
@@ -720,11 +900,10 @@ local function updateGuard(speed)
     if guardDeadline then
         if t >= guardMarkAt then
             guardMarkAt = t + GUARD_MARK_MS
-            -- Pinned to the top edge rather than scattered around the dial: the
-            -- steps come from outside the room, and a cue that lands somewhere
-            -- different every time reads as noise instead of a direction.
-            local set = sfxImages.marks
-            addEffect(set, math.random(60, 340), set.hh + 14, 520)
+            -- Dropped in from off the top edge rather than scattered around the
+            -- dial: the steps come from outside the room, and a cue that lands
+            -- somewhere different every time reads as noise, not a direction.
+            addDrop(sfxImages.marks)
         end
         if t >= guardDeadline then
             if speed > DEAD_SPEED then
@@ -763,29 +942,14 @@ local function updateNitro()
     end
 end
 
--- TOO LOUD: the club is loud enough to see. Notes launch off the top edge on a
--- random diagonal, left or right, and simply leave the screen - no fade, so
--- nothing pops out of existence mid-flight.
-local function updateNotes(dt)
-    if Run.has("too-loud") and now() >= noteAt then
-        if not noteBurst then noteBurst = Art.makeNoteBurst(Mods.iconImage("music-note")) end
-        local dir = (math.random(2) == 1) and 1 or -1
-        local ang = math.rad(math.random(20, 58)) * dir
-        -- Left of the card column only. A note crossing a card wrecks the one
-        -- thing the player must always be able to read.
-        notes[#notes + 1] = {
-            x = math.random(45, 175), y = -14,
-            vx = math.sin(ang) * 0.13, vy = math.cos(ang) * 0.13,
-        }
-        noteAt = now() + math.random(700, 1500)
-    end
-    local i = 1
-    while i <= #notes do
-        local nt = notes[i]
-        nt.x = nt.x + nt.vx * dt
-        nt.y = nt.y + nt.vy * dt
-        if nt.y > 252 or nt.x < -40 or nt.x > 205 then table.remove(notes, i) else i = i + 1 end
-    end
+-- TOO LOUD: the club is loud enough to see. Same drop as GUARD's marks, with the
+-- note glyph between the slashes, kept left of the card column - a cue over a
+-- card wrecks the one thing the player must always be able to read.
+local function updateNotes()
+    if not Run.has("too-loud") or now() < noteAt then return end
+    if not noteBurst then noteBurst = Art.makeSlashes(Mods.iconImage("music-note"), 1.2) end
+    addDrop(noteBurst)
+    noteAt = now() + math.random(700, 1500)
 end
 
 -- A damped spring, so the surface overshoots and settles instead of snapping to
@@ -845,6 +1009,19 @@ local function updatePlay(dt)
         gfx.setColor(gfx.kColorBlack)
         return
     end
+    -- BLACKOUT's opening owns the run until the torch is on: the clock is held,
+    -- the dial does not tick and no spot can be latched. The crank is still read
+    -- so the dial does not jump the moment play starts.
+    if blackoutClock then
+        blackoutClock = blackoutClock + dt
+        readCrank()
+        if blackoutClock >= BLACKOUT_MS - BLACKOUT_CLICK_MS and not flashClicked then
+            flashClicked = true
+            Sfx.flashlight()
+        end
+        if blackoutClock >= BLACKOUT_MS then blackoutClock = nil end
+        return
+    end
     remaining = remaining - dt
     local delta = readCrank()
     doTicks(delta)
@@ -856,7 +1033,7 @@ local function updatePlay(dt)
         updateNitro()
         updateSlosh()
     end
-    updateNotes(dt)
+    updateNotes()
     if remaining <= 0 and state == STATE_PLAY then
         remaining = 0
         loseReason = "timeup"
@@ -903,20 +1080,81 @@ local function buildWinPanel()
     return img
 end
 
+-- The modifiers the run was played under, replayed on the lose panel. The cards
+-- go with the scene when the panel slides over it, so the failure is annotated
+-- with what it was played against.
+--
+-- Each one is a pill: outlined rather than filled, because three solid white
+-- blocks would out-shout the SFX word this panel is built around. The outline is
+-- what makes the row read as three things instead of one long string of icons
+-- and words. Falls back to icon-only pills if the names cannot fit the row.
+local MOD_ICON <const> = 14
+local MOD_NAME_GAP <const> = 4
+local MOD_CHIP_H <const> = 20
+local MOD_CHIP_PADX <const> = 8
+local MOD_CHIP_GAP <const> = 8
+local MOD_ROW_W <const> = 388
+
+local function drawLoseMods(cy)
+    local mods = Run.mods or {}
+    if #mods == 0 then return end
+    gfx.setFont(Art.subFont)
+    local inkTop, inkH = Art.inkBand(Art.subFont, Art.CAPS)
+
+    local chips, total = {}, MOD_CHIP_GAP * (#mods - 1)
+    for i, m in ipairs(mods) do
+        local w = gfx.getTextSize(m.name)
+        chips[i] = { w = w, cw = MOD_CHIP_PADX * 2 + MOD_ICON + MOD_NAME_GAP + w }
+        total = total + chips[i].cw
+    end
+    local named = total <= MOD_ROW_W
+    if not named then
+        total = MOD_CHIP_GAP * (#mods - 1)
+        for i = 1, #mods do
+            chips[i].cw = MOD_CHIP_PADX * 2 + MOD_ICON
+            total = total + chips[i].cw
+        end
+    end
+
+    local x = math.floor(200 - total / 2)
+    local top = cy - math.floor(MOD_CHIP_H / 2)
+    local iconY = cy - math.floor(MOD_ICON / 2)
+    local textY = cy - math.floor(inkH / 2) - inkTop
+    for i, m in ipairs(mods) do
+        gfx.setColor(gfx.kColorWhite)
+        gfx.setLineWidth(1)
+        gfx.drawRoundRect(x, top, chips[i].cw, MOD_CHIP_H, math.floor(MOD_CHIP_H / 2))
+        gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+        local icon = Mods.iconImage(m.icon)
+        if icon then icon:draw(x + MOD_CHIP_PADX, iconY) end
+        if named then
+            gfx.drawText(m.name, x + MOD_CHIP_PADX + MOD_ICON + MOD_NAME_GAP, textY)
+        end
+        gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        x = x + chips[i].cw + MOD_CHIP_GAP
+    end
+    gfx.setColor(gfx.kColorBlack)
+end
+
 local function buildLosePanel()
     local img = gfx.image.new(400, 240, gfx.kColorBlack)
     gfx.pushContext(img)
         local key = loseReason == "boom" and "boom"
             or (loseReason == "caught" and "caught" or "timeup")
         local f = sfxImages[key].frames[1]
-        f.img:draw(200 - f.hw, 76 - f.hh)
-        gfx.setFont(Art.uiFont)
+        f.img:draw(200 - f.hw, 58 - f.hh)
+        -- Smaller than the win panel's heading: this line labels the dots, it is
+        -- not the headline. The SFX above it is.
+        gfx.setFont(Art.numFont)
         gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
-        gfx.drawTextAligned("TUMBLERS FOUND", 200, 118, kTextAlignment.center)
+        gfx.drawTextAligned("TUMBLERS FOUND", 200, 100, kTextAlignment.center)
         gfx.setImageDrawMode(gfx.kDrawModeCopy)
-        Art.drawDots(200, 146, tumbler - 1, true, Run.cfg and Run.cfg.tumblers or 3)
-        drawIconLabel(Art.iconA, "TRY AGAIN", 200, 180, true)
-        drawIconLabel(Art.iconB, "TITLE", 200, 206, true)
+        Art.drawDots(200, 138, tumbler - 1, true, Run.cfg and Run.cfg.tumblers or 3)
+        -- No rule between the dots and the pills: the outlines already close the
+        -- section off, and a second divider on a 240px panel is one too many.
+        drawLoseMods(172)
+        drawIconLabel(Art.iconA, "TRY AGAIN", 200, 198, true)
+        drawIconLabel(Art.iconB, "TITLE", 200, 220, true)
     gfx.popContext()
     return img
 end
@@ -982,7 +1220,9 @@ local function drawLose()
 end
 
 local function drawTitle()
-    gfx.clear(gfx.kColorWhite)
+    -- The plate carries the brick wall, the vault door it is set into, the floor
+    -- and both robbers, with the dial, wordmark and CTA cut out of it as white.
+    Art.titleBg:draw(0, 0)
     Art.drawDial(CX, 126, 62, dialPos)
     local tf = sfxImages.title.frames[1]
     tf.img:draw(200 - tf.hw, 40 - tf.hh)
@@ -990,6 +1230,7 @@ local function drawTitle()
     gfx.setColor(gfx.kColorBlack)
     gfx.fillRoundRect(120, 204, 160, 30, 6)
     drawIconLabel(Art.iconA, "CRACK IT", 200, 212, true)
+    drawEffects()          -- the auto-turn's latches land here
 end
 
 local function startToTitle()
@@ -998,6 +1239,7 @@ local function startToTitle()
     exitImage = gfx.getDisplayImage()
     exitClock = 0
     effects = {}
+    drops = {}
     state = STATE_TOTITLE
 end
 
@@ -1398,6 +1640,8 @@ local function updateMenu(dt)
     end
 end
 
+Sfx.titleAudio()        -- cold boot lands on the title screen, so its bed starts here
+
 function pd.update()
     local t = now()
     local dt = t - lastTime
@@ -1406,8 +1650,7 @@ function pd.update()
     local workT0 = t
 
     if state == STATE_TITLE then
-        readCrank()
-        doTicks(0)
+        updateTitleDial(dt)
         drawTitle()
         if pd.buttonJustPressed(pd.kButtonA) then startGame() end
     elseif state == STATE_PLAY then
@@ -1441,8 +1684,7 @@ function pd.update()
         end
     elseif state == STATE_TOTITLE then
         exitClock = exitClock + dt
-        readCrank()
-        doTicks(0)
+        updateTitleDial(dt)
         drawToTitle()
         if exitClock >= EXIT_MS then
             exitImage = nil

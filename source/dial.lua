@@ -18,6 +18,7 @@ Art.dialFont = gfx.font.new("fonts/Roobert-10-Bold")   -- dial numerals
 Art.sfxFont = gfx.font.new("fonts/Bouncy-30")          -- manga SFX
 Art.timerFont = gfx.font.new("fonts/Roobert-20-Medium")-- win panel readout
 
+Art.titleBg = gfx.image.new("images/title-screen-bg")
 Art.iconClock14 = gfx.image.new("images/clock-14")
 Art.iconHand = gfx.image.new("images/hand-cursor")
 Art.iconA = gfx.image.new("images/btn-a-14")
@@ -478,38 +479,30 @@ end
 
 -- TOO LOUD's music note, baked once with the `// \\` emphasis strokes either
 -- side that say "this is loud". Black on transparent, to read on the white door.
-function Art.makeNoteBurst(icon)
-    local w, h = 46, 20
-    local img = gfx.image.new(w, h)
-    gfx.pushContext(img)
-        gfx.setColor(gfx.kColorBlack)
-        gfx.setLineWidth(2)
-        gfx.drawLine(3, 14, 8, 4)
-        gfx.drawLine(8, 14, 13, 4)
-        gfx.drawLine(w - 3, 14, w - 8, 4)
-        gfx.drawLine(w - 8, 14, w - 13, 4)
-        gfx.setLineWidth(1)
-        if icon then icon:draw((w - 14) // 2, 3) end
-    gfx.popContext()
-    return { img = img, hw = w / 2, hh = h / 2 }
-end
-
--- GUARD's sound marks: the manga `// \\\\` with no glyph between them, meaning
--- only "something made a noise over there". Built as a full SFX set so it
--- wiggles in and dithers out exactly like K-CHIK and TOO FAST do.
+-- The manga sound mark: `// \\\\` with an optional glyph between the pairs. With
+-- nothing between them it means only "something made a noise over there" - GUARD.
+-- With TOO LOUD's note in the middle it means "and it was the music".
 --
--- It is not a telegraph and does not lift the TOO LOUD + GUARD ban: it says a
--- sound happened, not that it was footsteps, and carries none of the three-second
--- deadline that actually decides the run.
-function Art.makeMarks(scale)
-    local w, h <const> = 46, 26
+-- Neither is a telegraph, and GUARD's does not lift the TOO LOUD + GUARD ban: it
+-- says a sound happened, not that it was footsteps, and carries none of the
+-- three-second deadline that actually decides the run.
+--
+-- Returned as a drop set, not a wiggle set: both cues enter from off the top
+-- edge, so they need scale steps rather than rotation frames. See DROP_* in
+-- main.lua for the animation these steps are stepped through.
+local DROP_STEPS <const> = 6
+local DROP_MIN <const> = 0.80
+
+function Art.makeSlashes(icon, scale)
+    local w = icon and 66 or 46
+    local h <const> = 26
     local src = gfx.image.new(w, h)
     gfx.pushContext(src)
         -- black first and fat, white over it thin: the same read as outlinedText
         for _, pass in ipairs({ { gfx.kColorBlack, 7 }, { gfx.kColorWhite, 3 } }) do
             gfx.setColor(pass[1])
             gfx.setLineWidth(pass[2])
-            -- `// \\` - the pairs need real air between them or they read as one
+            -- the pairs need real air between them or they read as one
             -- four-stroke smear at this size
             gfx.drawLine(5, 20, 11, 6)
             gfx.drawLine(12, 20, 18, 6)
@@ -517,15 +510,27 @@ function Art.makeMarks(scale)
             gfx.drawLine(w - 12, 20, w - 18, 6)
         end
         gfx.setLineWidth(1)
+        if icon then
+            local ix, iy = (w - 14) // 2, 6
+            gfx.setImageDrawMode(gfx.kDrawModeFillBlack)
+            for dx = -2, 2 do
+                for dy = -2, 2 do
+                    if dx * dx + dy * dy <= 5 then icon:draw(ix + dx, iy + dy) end
+                end
+            end
+            gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+            icon:draw(ix, iy)
+            gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        end
     gfx.popContext()
 
-    local set = { frames = {}, fades = {} }
-    for i, ang in ipairs(WIGGLE) do set.frames[i] = bake(src, ang, scale or 1.2) end
-    local final = set.frames[#set.frames]
-    set.hw, set.hh = final.hw, final.hh
-    for i, a in ipairs(FADES) do
-        set.fades[i] = frameOf(final.img:fadedImage(a, gfx.image.kDitherTypeBayer4x4))
+    local set = { steps = {} }
+    for i = 1, DROP_STEPS do
+        local f = DROP_MIN + (1 - DROP_MIN) * (i - 1) / (DROP_STEPS - 1)
+        set.steps[i] = bake(src, 0, (scale or 1.2) * f)
     end
+    local top = set.steps[DROP_STEPS]
+    set.hw, set.hh = top.hw, top.hh
     return set
 end
 
