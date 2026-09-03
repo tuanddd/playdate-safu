@@ -8,8 +8,12 @@ Art = {}
 -- Roobert-10-Bold; the only non-mono alternative at that size does not exist.
 Art.uiFont = gfx.font.new("fonts/Roobert-11-Medium")   -- headings, pause menu
 Art.numFont = gfx.font.new("fonts/Roobert-10-Bold")    -- HUD timer, Ⓐ/Ⓑ prompts
-Art.titleFont = gfx.font.new("fonts/Roobert-10-Bold")  -- modifier card titles
-Art.subFont = gfx.font.new("fonts/Roobert-11-Medium")  -- card subtitles (one line only)
+-- The modifier cards are the one place Roobert cannot serve: it has no Light
+-- at any size and no Medium under 11px, so two weights at a size small enough
+-- for a 58px card do not exist in the family. Nontendo has Bold and Light at the
+-- same 13px line box, which is what lets the cards carry a full sentence.
+Art.titleFont = gfx.font.new("fonts/Nontendo-Bold")    -- card + catalogue titles
+Art.subFont = gfx.font.new("fonts/Nontendo-Light")     -- card + catalogue subtitles
 Art.dialFont = gfx.font.new("fonts/Roobert-10-Bold")   -- dial numerals
 Art.sfxFont = gfx.font.new("fonts/Bouncy-30")          -- manga SFX
 Art.timerFont = gfx.font.new("fonts/Roobert-20-Medium")-- win panel readout
@@ -165,11 +169,12 @@ function Art.drawDial(cx, cy, r, pos)
     gfx.fillCircleAtPoint(cx, cy, math.max(2, hub * 0.13))
 end
 
-function Art.drawDots(cx, y, filled, light)
+function Art.drawDots(cx, y, filled, light, count)
+    count = count or 3
     local bg = light and gfx.kColorBlack or gfx.kColorWhite
     local fg = light and gfx.kColorWhite or gfx.kColorBlack
-    for i = 1, 3 do
-        local x = cx + (i - 2) * 28
+    for i = 1, count do
+        local x = cx + (i - (count + 1) / 2) * 28
         gfx.setColor(bg)
         gfx.fillCircleAtPoint(x, y, 9)
         gfx.setColor(fg)
@@ -344,6 +349,19 @@ function Art.drawPlate(x, y, w, h)
     gfx.setLineWidth(1)
 end
 
+-- Square-cornered plate for the pause menu — same checkered shadow, no scoops.
+function Art.drawPanel(x, y, w, h)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillRect(x + 4, y + 4, w, h)
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillRect(x, y, w, h)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(2)
+    gfx.drawRect(x, y, w, h)
+    gfx.setLineWidth(1)
+end
+
 function Art.drawModCard(x, y, w, h, icon, title, sub)
     Art.drawPlate(x, y, w, h)
 
@@ -368,4 +386,150 @@ function Art.drawModCard(x, y, w, h, icon, title, sub)
 
     gfx.setFont(Art.subFont)
     gfx.drawTextInRect(sub, textX, top + th + 3, availW, lineH * 2)
+end
+
+-- ---------------------------------------------------------------------------
+-- Modifier visuals.
+
+-- BLACKOUT's flashlight, shining up from below the bottom edge.
+--
+-- Drawn as a handful of nested wedges of decreasing dither density rather than a
+-- per-pixel falloff: 400x240 is 96k Lua iterations, which costs a visible pause
+-- at run start, and at 1-bit a stepped ramp is indistinguishable from a smooth
+-- one. White here means "lit" - the caller uses this as a stencil.
+-- Two passes, because the beam and the things it lights need different curves.
+--
+-- BEAM is the light itself hanging in the dark air, sparse enough to read as
+-- haze. MASK is the falloff applied to the cards: its floor stays high, because
+-- a card dithered below about 70% loses its black text against the black room,
+-- and which modifiers are active is information the player cannot do without.
+local BEAM_BANDS <const> = {
+    { r = 350, a = 0.12 },
+    { r = 272, a = 0.20 },
+    { r = 198, a = 0.30 },
+    { r = 130, a = 0.42 },
+}
+local MASK_BANDS <const> = {
+    { r = 350, a = 0.80 },
+    { r = 255, a = 0.90 },
+    { r = 168, a = 0.97 },
+    { r = 96,  a = 1.00 },
+}
+
+local function wedge(fx, fy, r, half, steps)
+    local p = { fx, fy }
+    local a0 = -math.pi / 2 - half
+    for i = 0, steps do
+        local a = a0 + (2 * half) * i / steps
+        p[#p + 1] = fx + math.cos(a) * r
+        p[#p + 1] = fy + math.sin(a) * r
+    end
+    return p
+end
+
+local function cone(fx, fy, half, bands)
+    for _, b in ipairs(bands) do
+        -- setColor must be re-set inside the loop: setDitherPattern resets the
+        -- draw colour to black, so hoisting this out paints every band after the
+        -- first in black and eats the ones before it.
+        gfx.setColor(gfx.kColorWhite)
+        -- setDitherPattern's argument is TRANSPARENCY, not coverage: 0.1 is
+        -- nearly solid, 0.9 nearly invisible. Verified on a swatch, because
+        -- getting this backwards silently inverts the whole falloff.
+        gfx.setDitherPattern(1 - b.a, gfx.image.kDitherTypeBayer4x4)
+        gfx.fillPolygon(table.unpack(wedge(fx, fy, b.r, half, 14)))
+    end
+    gfx.setColor(gfx.kColorWhite)
+end
+
+-- The visible beam, drawn straight onto the dark room.
+function Art.drawLightBeam(fx, fy, half)
+    cone(fx, fy, half or 0.62, BEAM_BANDS)
+end
+
+-- The same cone as a stencil for whatever the beam falls on.
+function Art.drawLightMask(fx, fy, half)
+    cone(fx, fy, half or 0.62, MASK_BANDS)
+end
+
+-- TOO LOUD's music note, baked once with the `// \\` emphasis strokes either
+-- side that say "this is loud". Black on transparent, to read on the white door.
+function Art.makeNoteBurst(icon)
+    local w, h = 46, 20
+    local img = gfx.image.new(w, h)
+    gfx.pushContext(img)
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setLineWidth(2)
+        -- // on the left, \\ on the right
+        gfx.drawLine(3, 14, 8, 4)
+        gfx.drawLine(8, 14, 13, 4)
+        gfx.drawLine(w - 3, 14, w - 8, 4)
+        gfx.drawLine(w - 8, 14, w - 13, 4)
+        gfx.setLineWidth(1)
+        if icon then icon:draw((w - 14) // 2, 3) end
+    gfx.popContext()
+    return { img = img, hw = w / 2, hh = h / 2 }
+end
+
+-- GUARD's sound marks: the manga `// \\\\` with no glyph between them, meaning
+-- only "something made a noise over there". Built as a full SFX set so it
+-- wiggles in and dithers out exactly like K-CHIK and TOO FAST do.
+--
+-- It is not a telegraph and does not lift the TOO LOUD + GUARD ban: it says a
+-- sound happened, not that it was footsteps, and carries none of the three-second
+-- deadline that actually decides the run.
+function Art.makeMarks(scale)
+    local w, h <const> = 40, 26
+    local src = gfx.image.new(w, h)
+    gfx.pushContext(src)
+        -- black first and fat, white over it thin: the same read as outlinedText
+        for _, pass in ipairs({ { gfx.kColorBlack, 7 }, { gfx.kColorWhite, 3 } }) do
+            gfx.setColor(pass[1])
+            gfx.setLineWidth(pass[2])
+            gfx.drawLine(6, 20, 12, 6)
+            gfx.drawLine(13, 20, 19, 6)
+            gfx.drawLine(w - 6, 20, w - 12, 6)
+            gfx.drawLine(w - 13, 20, w - 19, 6)
+        end
+        gfx.setLineWidth(1)
+    gfx.popContext()
+
+    local set = { frames = {}, fades = {} }
+    for i, ang in ipairs(WIGGLE) do set.frames[i] = bake(src, ang, scale or 1.2) end
+    local final = set.frames[#set.frames]
+    set.hw, set.hh = final.hw, final.hh
+    for i, a in ipairs(FADES) do
+        set.fades[i] = frameOf(final.img:fadedImage(a, gfx.image.kDitherTypeBayer4x4))
+    end
+    return set
+end
+
+-- NITRO's spirit level, drawn over everything else. The surface stays level
+-- while the door tilts under it, so the player reads their own hands rather than
+-- a number. Dithered so the dial and cards stay legible underneath.
+--
+-- `angle` is radians of surface tilt, `danger` 0..1 how close to spilling.
+function Art.drawWaterLayer(angle, danger)
+    -- Sits low enough to leave the modifier cards and the Ⓐ/Ⓑ prompts readable.
+    -- It is a hazard overlay, not a curtain: covering the card column would hide
+    -- which modifiers are running.
+    local cx, cy <const> = 200, 210
+    local dx = math.cos(angle) * 300
+    local dy = math.sin(angle) * 300
+    -- the surface, extended past both edges, closed off the bottom of the screen
+    local poly = {
+        cx - dx, cy - dy,
+        cx + dx, cy + dy,
+        cx + dx, 260,
+        cx - dx, 260,
+    }
+    gfx.setColor(gfx.kColorBlack)
+    -- transparency, so higher is sparser; it thickens as you near spilling
+    gfx.setDitherPattern(danger > 0.75 and 0.52 or 0.72, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillPolygon(table.unpack(poly))
+    -- the waterline itself stays solid, so the horizon is always readable
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(danger > 0.75 and 3 or 2)
+    gfx.drawLine(cx - dx, cy - dy, cx + dx, cy + dy)
+    gfx.setLineWidth(1)
 end

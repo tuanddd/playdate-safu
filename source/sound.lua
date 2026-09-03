@@ -5,6 +5,17 @@ Sfx = {}
 local tickSample <const> = snd.sample.new("sounds/tick")
 local sweetSample <const> = snd.sample.new("sounds/sweet")
 local clearedSample <const> = snd.sample.new("sounds/cleared")
+-- DECOY. Same attack as sweet, with a 92 Hz dud in the tail from 105 ms. The
+-- separation in the 80-110 Hz band is the whole tell; see game.md, "Measured
+-- audio headroom", before retuning either file.
+local fakeSample <const> = snd.sample.new("sounds/sweet-fake")
+local footstepSample <const> = snd.sample.new("sounds/footstep")
+
+-- UI feedback. Split by intent, not by button: confirm is "going in", back is
+-- "coming out", hover is the cursor moving between rows.
+local uiConfirmVoice = snd.sampleplayer.new("sounds/ui-confirm")
+local uiBackVoice = snd.sampleplayer.new("sounds/ui-cancel-back")
+local uiHoverVoice = snd.sampleplayer.new("sounds/ui-hover")
 
 local tickVoices = {}
 local tickIdx = 1
@@ -32,8 +43,22 @@ local clearedVoice = snd.sampleplayer.new(clearedSample)
 local lockedVoice = snd.synth.new(snd.kWaveSquare)
 lockedVoice:setADSR(0, 0.09, 0, 0.06)
 
+local fakeVoice = snd.sampleplayer.new(fakeSample)
+local footstepVoice = snd.sampleplayer.new(footstepSample)
+
+-- SCRAMBLED's wrong-direction tell: "it is here, but not this way". Deliberately
+-- dull and low so it never reads as a latch. Audio only, by design - a text cue
+-- would give the direction away for free (game.md SS12).
+local wrongVoice = snd.synth.new(snd.kWaveSine)
+wrongVoice:setADSR(0.004, 0.09, 0, 0.06)
+
+-- TOO LOUD ducks every mechanism sound under the music. 1.0 is unmodified.
+local mechVol = 1.0
+function Sfx.setMechVolume(v) mechVol = v or 1.0 end
+
 local bgm = snd.fileplayer.new("sounds/bgm")
 bgm:setVolume(0.12)
+local currentTrack = "sounds/bgm"
 
 local function after(ms, fn)
     playdate.timer.performAfterDelay(ms, fn)
@@ -46,18 +71,51 @@ function Sfx.tick(speed)
     tickIdx = tickIdx % #tickVoices + 1
     local s = math.min(speed, 150) / 50
     v:setRate(0.94 + s * 0.05 + math.random() * 0.06)
-    v:setVolume(0.26 + s * 0.06)
+    v:setVolume((0.26 + s * 0.06) * mechVol)
     v:play(1)
 end
 
+function Sfx.uiConfirm()
+    if uiConfirmVoice then uiConfirmVoice:play(1) end
+end
+
+function Sfx.uiBack()
+    if uiBackVoice then uiBackVoice:play(1) end
+end
+
+function Sfx.uiHover()
+    if uiHoverVoice then uiHoverVoice:play(1) end
+end
+
 function Sfx.sweetSpot()
-    sweetVoice:setVolume(1.0)
+    -- Ducked less than the ticks under TOO LOUD: a real latch still has to cut
+    -- through the music or the run is unreadable.
+    sweetVoice:setVolume(math.max(mechVol, 0.35))
     sweetVoice:setRate(1.0)
     sweetVoice:play(1)
 end
 
+-- DECOY's fake latch. Same level as the real one; only the tail differs.
+function Sfx.decoy()
+    fakeVoice:setVolume(math.max(mechVol, 0.35))
+    fakeVoice:setRate(1.0)
+    fakeVoice:play(1)
+end
+
 function Sfx.graze()
+    grazeVoice:setVolume(0.5 * mechVol)
     grazeVoice:play(1)
+end
+
+function Sfx.wrongDir()
+    wrongVoice:playNote(70, 0.16 * mechVol, 0.10)
+end
+
+-- GUARD. Never ducked: missing it is a hard game over, so it has to be heard
+-- over whatever bed is playing.
+function Sfx.footstep()
+    footstepVoice:setVolume(1.0)
+    footstepVoice:play(1)
 end
 
 function Sfx.handle()
@@ -87,14 +145,29 @@ function Sfx.reset()
     after(90, function() resetVoice:playNote(165, 0.26, 0.14) end)
 end
 
-function Sfx.bgmStart()
+-- One background track per run, chosen at startGame and never changed: the
+-- default bed, TOO LOUD's club track, or GUARD's night ambience. TOO LOUD and
+-- GUARD are a banned pair, so two beds can never be asked for at once.
+function Sfx.bgmStart(track, vol)
     bgm:stop()
-    bgm:setVolume(0.12)
+    if track and track ~= currentTrack then
+        bgm:load(track)
+        currentTrack = track
+    end
+    bgm:setVolume(vol or 0.12)
     bgm:play(0)
 end
 
 function Sfx.bgmStop()
     bgm:stop()
+end
+
+-- Everything the title screen should sound like. Called on every route back to
+-- the title, so no run's music can survive into it. There is no title track yet;
+-- when there is, start it here and nowhere else.
+function Sfx.titleAudio()
+    bgm:stop()
+    -- TODO: title BGM goes here, e.g. titleBgm:play(0)
 end
 
 function Sfx.start()

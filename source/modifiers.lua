@@ -1,8 +1,9 @@
 -- Safu modifier catalogue — the 12 modifiers of game.md §12, their icons, and the
 -- combination rules that decide which triples are legal.
 --
--- DATA AND ART ONLY. No modifier mechanic is implemented; nothing here changes the
--- game yet. It exists so the HUD and the roll logic have one place to read from.
+-- Data, art, the legality rules, and Mods.buildCfg — which turns a rolled set into
+-- the tunables one run plays by. The effects themselves live at their natural
+-- call sites in main.lua; nothing here reaches into the game loop.
 --
 -- Art: 14x14, 1-bit, transparent background. Every icon exists twice —
 --   individually at  images/modifiers/<icon>       (Mods.iconImage)
@@ -44,28 +45,28 @@ Mods.iconFrames = {
     ["flask"] = 12,
 }
 
--- `sub` is the card's second row, set in Roobert-11-Medium. That face has a 22px
--- line box and the card only has ~41px under the title, so a subtitle must fit
--- on ONE line of the 113px column — about 14 characters. Longer text clips.
+-- `sub` is the card's second row, set in Nontendo-Light (13px line box). It wraps
+-- to at most 2 lines in the card's 113px column — roughly 34 characters. The same
+-- string is used by the pause menu's catalogue.
 -- axis and tags are FLAVOUR ONLY — legality is decided per pair below, not by axis
 -- (game.md §12, "Modes and combinations").
 Mods.list = {
-    { id = "blackout",      name = "BLACKOUT",      sub = "No dial",     axis = "perception", tags = { "channel" }, icon = "eye-off" },
-    { id = "too-loud",      name = "TOO LOUD",      sub = "Ticks buried",    axis = "perception", tags = { "channel" }, icon = "music-note" },
-    { id = "hair-trigger",  name = "HAIR TRIGGER",  sub = "Crawl only",  axis = "motor",      tags = {},            icon = "crosshair" },
-    { id = "greased",       name = "GREASED",       sub = "It coasts",     axis = "motor",      tags = {},            icon = "oil-slip" },
-    { id = "sticky",        name = "STICKY",        sub = "Shove it",     axis = "motor",      tags = {},            icon = "goo-drip" },
-    { id = "scrambled",     name = "SCRAMBLED",     sub = "Random turn",     axis = "memory",     tags = {},            icon = "both-ways" },
-    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Four spots",   axis = "memory",     tags = { "time" },    icon = "four-pins" },
+    { id = "blackout",      name = "BLACKOUT",      sub = "The dial is not drawn",     axis = "perception", tags = { "channel" }, icon = "eye-off" },
+    { id = "too-loud",      name = "TOO LOUD",      sub = "Ticks buried in noise",    axis = "perception", tags = { "channel" }, icon = "music-note" },
+    { id = "hair-trigger",  name = "HAIR TRIGGER",  sub = "Only a crawl will latch",  axis = "motor",      tags = {},            icon = "crosshair" },
+    { id = "greased",       name = "GREASED",       sub = "It coasts after you stop",     axis = "motor",      tags = {},            icon = "oil-slip" },
+    { id = "sticky",        name = "STICKY",        sub = "Shove it to get moving",     axis = "motor",      tags = {},            icon = "goo-drip" },
+    { id = "scrambled",     name = "SCRAMBLED",     sub = "Each turn goes either way",     axis = "memory",     tags = {},            icon = "both-ways" },
+    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Four spots, not three",   axis = "memory",     tags = { "time" },    icon = "four-pins" },
     -- DRIFT MUST STAY WELL UNDER MAX_ENGAGE_SPEED (25 units/sec, main.lua). A spot
     -- that drifts at or above the speed you are allowed to latch at is literally
     -- uncatchable: closing on it fast enough to keep up is itself a graze.
     -- Mods.MAX_DRIFT is the ceiling the effect must honour.
-    { id = "wandering",     name = "WANDERING",     sub = "Spots drift",   axis = "memory",     tags = {},            icon = "drift-target" },
-    { id = "decoy",         name = "DECOY",         sub = "One is fake",   axis = "risk",       tags = {},            icon = "twin-marks" },
-    { id = "one-shot",      name = "ONE SHOT",      sub = "One try",   axis = "risk",       tags = { "fail" },    icon = "skull" },
-    { id = "guard",         name = "GUARD",         sub = "Stop moving",   axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
-    { id = "nitro",         name = "NITRO",         sub = "Keep it level",   axis = "body",       tags = { "fail" },    icon = "flask" },
+    { id = "wandering",     name = "WANDERING",     sub = "Spots drift while you idle",   axis = "memory",     tags = {},            icon = "drift-target" },
+    { id = "decoy",         name = "DECOY",         sub = "One spot is a lie",   axis = "risk",       tags = {},            icon = "twin-marks" },
+    { id = "one-shot",      name = "ONE SHOT",      sub = "A wrong pull ends the run",   axis = "risk",       tags = { "fail" },    icon = "skull" },
+    { id = "guard",         name = "GUARD",         sub = "Freeze when you hear steps",   axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
+    { id = "nitro",         name = "NITRO",         sub = "Keep the device level",   axis = "body",       tags = { "fail" },    icon = "flask" },
 }
 
 Mods.byId = {}
@@ -194,4 +195,62 @@ function Mods.roll(count)
         if total then return pick, mode end
     end
     return nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Gameplay configuration for one run.
+--
+-- Every tunable the modifiers touch lives here, defaulted to the unmodified
+-- game, so main.lua reads Run.cfg.x instead of a constant and no effect needs a
+-- special case at its call site. Fields the renderer owns (drawDial, showEffects,
+-- shake) are set here too, so there is one place to look.
+
+function Mods.buildCfg(mods)
+    local c = {
+        -- perception - consumed by the renderer, not by the rules
+        drawDial = true, showEffects = true, shake = true,
+        -- the audio bed: exactly one track per run (game.md, "The audio bed").
+        -- TOO LOUD and GUARD are a banned pair, so these can never both apply.
+        bgmTrack = "sounds/bgm", bgmVol = 0.12, mechVol = 1.0,
+        -- motor
+        maxEngage = 25, friction = nil, stiction = 0,
+        -- the puzzle
+        tumblers = 3, randomDirs = false, drift = 0, decoy = false,
+        -- run-ending conditions
+        oneShot = false, guard = false, nitro = false,
+    }
+    local has = {}
+    for _, m in ipairs(mods or {}) do has[m.id] = true end
+
+    if has["blackout"] then c.drawDial, c.showEffects, c.shake = false, false, false end
+    if has["too-loud"] then c.bgmTrack, c.bgmVol, c.mechVol = "sounds/nightclub", 0.50, 0.18 end
+    if has["guard"] then c.bgmTrack, c.bgmVol, c.guard = "sounds/ambience", 0.45, true end
+    -- 7.5 units/sec is the old 0.15 per frame at 50 fps, versus a normal 25.
+    if has["hair-trigger"] then c.maxEngage = 7.5 end
+    if has["greased"] then c.friction = 0.90 end
+    -- Below this the dial will not move at all; the held input releases in one
+    -- shove. Must stay under maxEngage or the pair is unwinnable - which is why
+    -- HAIR TRIGGER + STICKY is banned rather than merely hard.
+    if has["sticky"] then c.stiction = 14 end
+    if has["scrambled"] then c.randomDirs = true end
+    if has["four-tumblers"] then c.tumblers = 4 end
+    if has["wandering"] then c.drift = Mods.MAX_DRIFT end
+    if has["decoy"] then c.decoy = true end
+    if has["one-shot"] then c.oneShot = true end
+    if has["nitro"] then c.nitro = true end
+    return c
+end
+
+-- Required turn direction per tumbler. The classic alternating rhythm unless
+-- SCRAMBLED, which rolls each one independently.
+function Mods.rollDirs(count, random)
+    local d = {}
+    for i = 1, count do
+        if random then
+            d[i] = (math.random(2) == 1) and 1 or -1
+        else
+            d[i] = (i % 2 == 1) and 1 or -1
+        end
+    end
+    return d
 end

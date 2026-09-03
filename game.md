@@ -46,7 +46,7 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | Open the safe | Press Ⓐ after all 3 are found |
 | Refresh rate | 50 fps |
 | Screens | Title → Play → Win / Lose → (Ⓑ) → Title |
-| Modifiers | 3 rolled per run and **shown on the cards — no effect is implemented** |
+| Modifiers | 3 rolled per run — **effects and custom UI both live** |
 
 ### Tuning constants (`source/main.lua`)
 
@@ -55,7 +55,7 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | `GAME_MS` | `60000` | Run length, 1 minute |
 | `DEG_PER_UNIT` | `3.6` | Crank degrees per dial unit → **1 crank revolution = 1 dial revolution** |
 | `TOL` | `2.2` | Sweet spot half-width in dial units (zone is 4.4 units ≈ 7.9° wide) |
-| `MAX_ENGAGE_SPEED` | `25` | Max speed to latch a tumbler — 25 units/**sec** ≈ **90°/sec** of crank |
+| `cfg.maxEngage` | `25` | Max speed to latch — 25 units/**sec** ≈ **90°/sec**. Per-run, so it lives in `Mods.buildCfg`, not `main.lua`; HAIR TRIGGER drops it to 7.5 |
 | `RESET_SPEED` | `80` | Speed above which progress resets — 80 units/sec ≈ **288°/sec** |
 | `DEAD_SPEED` | `1.5` | Below this the dial counts as stationary |
 | `TICK_STEP` | `4` | A tick every 4 dial units → 25 ticks per revolution |
@@ -104,8 +104,8 @@ most 2 lines**. Title and subtitle are the same family at two sizes and weights 
 **Nontendo-Bold 13** over **Nontendo-Light 13** — same size, one weight apart. `FOUR TUMBLERS` is the widest title that fits; there is
 no smaller weight to fall back to, so names must stay at or under 13 characters.
 
-The cards are **display only** — `Run.mods` is rolled in `startGame()` via `Mods.roll(3)`; no
-modifier changes play yet.
+`Run.mods` is rolled in `startGame()` via `Mods.roll(3)`, and `Mods.buildCfg` turns the set into
+`Run.cfg` — the tunables the run plays by. Effects and their visuals are both implemented (§12b).
 
 **There is no progress indicator during play.** The player tracks their own progress from the
 audio/visual cues. `Ⓐ Open?` is therefore a genuine gamble.
@@ -138,7 +138,9 @@ underneath — the mirror of the win panel sliding down.
     └──────────────┘        └──────────────┘        └──────────────┘
          t = 0                  t = 0.5                  t = 1
 
-`startToTitle()` captures the live screen with `gfx.getDisplayImage()`; `drawToTitle()` then draws
+`startToTitle()` calls `Sfx.titleAudio()` first — quitting mid-run from the pause menu would
+otherwise carry the play BGM into the title screen. It then captures the live screen with
+`gfx.getDisplayImage()`; `drawToTitle()` then draws
 the title first and the captured image on top at `y = -240 * e`, where `e` is the same cubic
 ease-out (`1-(1-t)³`) the win panel uses. Runs 420 ms in `STATE_TOTITLE`, then hands off to
 `STATE_TITLE` and frees the image.
@@ -243,12 +245,18 @@ one huge delta on resume and trip `RESET_SPEED`.
 
     ┌────────────────────────────┐
     │▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│  ← 50% dither over the frozen scene
+    │▒▒▒▒▒▒▒▒▒▒ SAFU ▒▒▒▒▒▒▒▒▒▒▒▒│  ← logo straddles the top border
     │▒▒▒▒┌──────────────┐▒▒▒▒▒▒▒▒│
-    │▒▒▒▒│ ☞ Resume     │▒▒▒▒▒▒▒▒│  ← same scooped plate + checkered
-    │▒▒▒▒│   Modifiers  │▒▒▒▒▒▒▒▒│    shadow as the modifier cards
-    │▒▒▒▒│   Quit       │▒▒▒▒▒▒▒▒│
+    │▒▒▒▒│   ☞ Resume   │▒▒▒▒▒▒▒▒│  ← square corners here, not scooped;
+    │▒▒▒▒│    Modifiers │▒▒▒▒▒▒▒▒│    labels centred, cursor to the left
+    │▒▒▒▒│      Quit    │▒▒▒▒▒▒▒▒│
     │▒▒▒▒└──────────────┘▒▒▒▒▒▒▒▒│
     └────────────────────────────┘
+
+Sizing rules that keep it symmetric: the cursor gutter is **mirrored on the right** so centred
+labels sit in the middle of the panel; the height counts the **last label's own ink** (`Quit` has a
+descender — measuring a descender-free sample eats 5px of the bottom gap); and the logo's lower
+half is reserved above the first row so it cannot crowd it.
 
 - **Up/Down** move the cursor (wraps), **Ⓐ** selects, **Ⓑ** closes and resumes.
 - The cursor is `images/hand-cursor.png`, **poking along X** on a sine (0–5px) — it points at the
@@ -274,6 +282,18 @@ one huge delta on resume and trip `RESET_SPEED`.
 | `handle` | `sweet` then `cleared.wav` after 1 s | The opening sequence |
 | `locked` / `fail` / `reset` / `start` | square-wave synths | Two- and three-note descending motifs |
 | `bgm` | `bgm.wav` @ vol 0.12 | Loops during play, stops on win/lose |
+| `titleAudio` | — | Every route back to the title calls it: it silences the run's music and is the single place a title track should start |
+| `uiConfirm` | `ui-confirm.wav` | Going *in*: opening the menu, entering the catalogue, Quit |
+| `uiBack` | `ui-cancel-back.wav` | Coming *out*: Resume, leaving the catalogue, Ⓑ to the title |
+| `uiHover` | `ui-hover.wav` | The cursor moving between menu rows, and catalogue page flips |
+
+UI sounds are keyed to **intent, not to the button**. Ⓐ on `Resume` plays the *back* sound because
+it leaves the menu; Ⓑ opening the menu plays *confirm* because it goes in. `Ⓐ OPEN?` during play is
+deliberately excluded — it is a game action, and it already has the handle sounds.
+
+Source MP3s live in `sound-fxs/`; the Playdate needs WAV for `sample.new`, so they are converted:
+
+    afconvert -f WAVE -d LEI16@44100 -c 1 sound-fxs/ui-confirm.mp3 source/sounds/ui-confirm.wav
 
 Ticks fire on **detent crossings** (every 4 dial units), not on a timer — so the tick rate emerges
 from crank speed. Slow: `tik … tik … tik`. Fast: `tktktktktk`.
@@ -318,28 +338,28 @@ that ink.
 clock, and the Ⓐ/Ⓑ buttons (`images/svg/icons-pixel.js`). The old 22px `clock`, `btn-a` and `btn-b`
 are gone.
 
-**Fonts:** Roobert everywhere — Panic's system family — with **Bouncy-30** reserved for the manga
-SFX, the one display face in the game. **No mono cut is used anywhere.**
+**Fonts:** Roobert for the chrome, **Nontendo** for the modifier cards, **Bouncy-30** for the
+manga SFX.
 
 | Cut | Line | Used for |
 |---|---|---|
-| `Roobert-10-Bold` | 14 | card titles, dial numerals, timer, Ⓐ/Ⓑ prompts |
-| `Roobert-11-Medium` | 22 | card subtitles, screen headings, the pause menu |
+| `Roobert-11-Medium` | 22 | screen headings, the pause menu's own list |
+| `Roobert-10-Bold` | 14 | dial numerals, HUD timer, Ⓐ/Ⓑ prompts |
+| `Nontendo-Bold` | 13 | modifier card + catalogue titles |
+| `Nontendo-Light` | 13 | modifier card + catalogue subtitles |
 | `Roobert-20-Medium` | 32 | the win panel's frozen time |
 | `Bouncy-30` | — | manga SFX |
 
-**Subtitles are one line, ~14 characters.** Roobert-11-Medium has a 22px line box and the card
-leaves ~41px under the title, so a second line does not fit. The full sentences that used to run
-here wrapped to 2–3 lines (`Freeze when you hear steps` is 239px in a 113px column) and had to be
-cut down to fit. The pause-menu catalogue shows the same short lines.
+**Why the cards are the one exception to Roobert.** They need two weights at a size small enough
+that a title plus a two-line subtitle fits a 58px card. Roobert **has no Light at any size and no
+Medium below 11px** — at 11-Medium a subtitle is a 22px line box, so only one line fits and the
+descriptions have to be cut to ~14 characters. Nontendo has Bold and Light in the same 13px box:
+title 85px, subtitle wrapping to 26px, 42px of the 58px card used. Measured on device, the only
+other SDK families with two weights that small are pixieval (15px) and Bitmore Medieval (11px);
+Asheville Sans, Newsleak and Sasser Slab all need 63px or more.
 
-**The SDK has no Roobert Medium below 11px, and no Light weight at any size.** 10px exists only in Bold, and the `-Halved` cuts
-measure identically to their parents (they are a sheet-packing variant, not a condensed one). So
-the small UI face is Roobert-10-Bold, which is why the card title and subtitle share a weight.
-
-Two things forced the small cut, both measured on device: `FOUR TUMBLERS` is **165px** in
-Roobert-11-Bold and **152px** in Roobert-11-Medium against a **113px** column (Roobert-10-Bold:
-**107px**), and Roobert-11's numerals are wide enough that `00`–`90` collide on the dial.
+Roobert-11-Medium's numerals are also wide enough that `00`–`90` collide on the dial, which is why
+the dial uses the 10px cut.
 
 ---
 
@@ -524,6 +544,118 @@ so the asset was normalised +20 dB rather than fought with a volume multiplier.
 
 Anyone retuning `sweet-fake.wav` should re-check the first two rows: 14 dB of separation in the
 80–110 Hz band is what makes DECOY fair.
+
+### 12b. Effects layer — implemented
+
+`Mods.buildCfg(mods)` returns one `Run.cfg` table holding every tunable a modifier touches,
+defaulted to the unmodified game. `main.lua` reads `Run.cfg.x` instead of a constant, so no effect
+needs a special case at its call site.
+
+| Field | Default | Set by |
+|---|---|---|
+| `drawDial` `showEffects` `shake` | `true` | BLACKOUT → all false *(renderer reads these; not yet consumed)* |
+| `bgmTrack` `bgmVol` `mechVol` | `sounds/bgm` `0.12` `1.0` | TOO LOUD → nightclub/0.50/0.18 · GUARD → ambience/0.45 |
+| `maxEngage` | `25` | HAIR TRIGGER → `7.5` |
+| `friction` | `nil` | GREASED → `0.90` |
+| `stiction` | `0` | STICKY → `14` |
+| `tumblers` | `3` | FOUR TUMBLERS → `4` |
+| `randomDirs` | `false` | SCRAMBLED |
+| `drift` | `0` | WANDERING → `Mods.MAX_DRIFT` (5) |
+| `decoy` `oneShot` `guard` `nitro` | `false` | their own modifiers |
+
+**Where each effect lives**
+
+- **GREASED / STICKY** — `readCrank`. Stiction banks sub-threshold input and releases it in one
+  shove; greasing follows the crank exactly while it turns, then coasts. Both are gated on
+  `state == STATE_PLAY`: `Run.cfg` outlives the run, so without that the title dial would still
+  be sticky after a modified game.
+- **HAIR TRIGGER / FOUR TUMBLERS / SCRAMBLED** — `checkTumbler`, via `cfg.maxEngage`,
+  `cfg.tumblers` and `Run.dirs`. SCRAMBLED also fires `Sfx.wrongDir()` — a soft low thud, once per
+  entry into a zone, meaning *it is here but not this way*. Audio only, by design.
+- **DECOY** — `checkDecoy`, run alongside the real tumblers. Latches like a real spot, plays
+  `sweet-fake.wav`, shows the same `K-CHIK!`, and **never sets `shakeStart`**. The dud in the tail
+  and the missing shake are the only two tells.
+- **WANDERING** — `driftTargets`, only while the dial is under `DEAD_SPEED`. Unlatched spots only.
+- **GUARD** — `updateGuard`. A footstep every 5–9 s, then `GUARD_GRACE_MS` (3000) to stop. Still
+  moving when the grace expires and the run ends. The grace is what makes an audio-only hard-fail
+  fair.
+- **NITRO** — `updateNitro`. X axis only. The first 30 frames calibrate whatever angle the player
+  actually holds the device at, so nobody is punished for their grip; past `NITRO_LIMIT` (0.35 g
+  from neutral) the run ends. Exposes `Run.tilt` for the water layer to draw.
+- **ONE SHOT** — `tryHandle`. A wrong pull calls `loseRun` instead of resetting progress.
+
+**Ending a run early.** `loseRun(reason)` is the single path for every non-clock ending, using the
+same slide-down as a time-out with a different word: `CAUGHT!` for ONE SHOT and GUARD, `BOOM!` for
+NITRO. The lose panel draws `cfg.tumblers` dots, not always three.
+
+**Not yet verified.** The effects compile and the simulator boots clean, but no modifier has been
+played through. `Mods.buildCfg` and the pair rules are cross-checked against this document
+(12 modifiers, 38 banned / 38 hard / 144 normal triples); the *feel* of every constant above —
+friction, stiction, drift, grace, tilt limit — is a first guess awaiting a device.
+
+### 12c. Visual layer — implemented
+
+Five modifiers draw something.
+
+**BLACKOUT** — `buildBlackout()` bakes the whole dark room once. A flashlight at `(300, 272)`,
+below the bottom edge, throws a cone drawn in two passes:
+
+- `Art.drawLightBeam` paints the beam itself onto the black room, sparsely (12%→42%), so the cone
+  is visible hanging in the empty dark and not only where it happens to land on a card.
+- `Art.drawLightMask` builds the same cone as a stencil for the cards, with a **floor of 80%** —
+  a card dithered below roughly 70% loses its black text against the black room, and which
+  modifiers are running is information the player cannot do without.
+
+The timer is drawn after `clearStencil`, so the blackout never touches it. No dial, no shake, no
+SFX text, no Ⓐ prompt: the run is played by ear.
+
+Both passes use nested wedges of decreasing dither rather than a per-pixel falloff — 400×240 is
+96k Lua iterations, a visible stall at run start, and at 1-bit a stepped ramp looks the same.
+
+> Two Playdate gotchas, both found the hard way and both silent:
+> **`setDitherPattern(a)` takes transparency, not coverage** — `0.1` is nearly solid, `0.9` nearly
+> invisible. Getting it backwards inverts an entire falloff with no error.
+> **`setDitherPattern` resets the draw colour to black.** `setColor` must be re-set *inside* the
+> band loop; hoisting it out paints every band after the first in black and eats the ones before.
+
+**TOO LOUD** — `Art.makeNoteBurst` bakes a music-note glyph flanked by `// \\` once. Notes launch
+off the top edge on a random diagonal, left or right, and simply leave the screen — no fade, so
+nothing pops out mid-flight. They spawn only in `x = 45..175` and are culled past `x = 205`:
+**a note crossing a card wrecks the one thing the player must always be able to read.**
+
+**ONE SHOT** — the `Ⓐ OPEN?` prompt trembles, `sin(now()/26) * 1.6` px, forever. Flavour, not
+information — the card already states the rule, which is why losing it under BLACKOUT costs
+nothing.
+
+**GUARD** — `Art.makeMarks` bakes the manga `// \\` with **no glyph between the strokes**, and one
+fires alongside every footstep. Built by hand rather than set in the SFX font, which has no slash
+glyphs, but with the same frames/fades shape so it wiggles in and dithers out like `K-CHIK` does.
+
+It does **not** lift the TOO LOUD + GUARD ban. The marks say a sound happened, not that it was
+footsteps, and carry none of the three-second deadline that actually decides the run — so they are
+atmosphere, not a telegraph, and no substitute for hearing the cue.
+
+**NITRO** — `Art.drawWaterLayer` draws last, over everything. The surface is a damped spring
+(`vel = (vel + (target - angle) * 0.06) * 0.88`) so it overshoots and settles instead of snapping;
+that lag is what reads as liquid. X axis only, so it is a left/right balance. Waterline sits at
+`y = 210` and the fill is sparse: it is a hazard overlay, not a curtain, and burying the card
+column would hide the run's own rules.
+
+> **A hang that only four tumblers could reach.** `genTargets` used to guess positions and reject
+> the bad ones. That is fine at three and a trap at four: the start plus four targets each wanting
+> 18 units of clearance needs 90 of the dial's 100, so valid arrangements are rare enough that the
+> loop effectively never terminates. Every FOUR TUMBLERS run froze. It raised no Lua error, so
+> `pcall` could not see it and the simulator simply stopped — which is exactly why it survived a
+> clean build, a clean boot and three earlier screenshot runs that happened never to roll it.
+>
+> It now hands out `count+1` gaps that each clear the minimum and sum to exactly 100, then walks
+> them round the dial: one pass, no loop, cannot fail. Verified at 0 violations in 20,000 rolls at
+> both counts. The result is shuffled, or the tumblers would always appear in rotational order
+> from the start — a pattern worth learning.
+
+**Still first-guess numbers.** Every constant here — cone radii and alphas, note speed and spawn
+rate, tremble frequency, waterline height, slosh stiffness and damping — was tuned against
+simulator screenshots, not a device in hand.
 
 ### Per-modifier implementation
 
