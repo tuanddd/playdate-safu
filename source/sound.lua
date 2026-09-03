@@ -59,6 +59,9 @@ function Sfx.setMechVolume(v) mechVol = v or 1.0 end
 local bgm = snd.fileplayer.new("sounds/bgm")
 bgm:setVolume(0.12)
 local currentTrack = "sounds/bgm"
+-- Remembered so the menu can duck and restore without knowing which track or
+-- volume this particular run happens to be using.
+local bgmVol = 0.12
 
 local function after(ms, fn)
     playdate.timer.performAfterDelay(ms, fn)
@@ -83,8 +86,13 @@ function Sfx.uiBack()
     if uiBackVoice then uiBackVoice:play(1) end
 end
 
+-- Hover fires on every cursor move, so it sits well under the other two: at full
+-- volume a held d-pad turns the menu into a machine gun.
 function Sfx.uiHover()
-    if uiHoverVoice then uiHoverVoice:play(1) end
+    if uiHoverVoice then
+        uiHoverVoice:setVolume(0.45)
+        uiHoverVoice:play(1)
+    end
 end
 
 function Sfx.sweetSpot()
@@ -154,12 +162,18 @@ function Sfx.bgmStart(track, vol)
         bgm:load(track)
         currentTrack = track
     end
-    bgm:setVolume(vol or 0.12)
+    bgmVol = vol or 0.12
+    bgm:setVolume(bgmVol)
     bgm:play(0)
 end
 
 function Sfx.bgmStop()
     bgm:stop()
+end
+
+-- The pause menu pushes the run into the background, so its music goes with it.
+function Sfx.bgmDuck(on)
+    bgm:setVolume(on and bgmVol * 0.28 or bgmVol)
 end
 
 -- Everything the title screen should sound like. Called on every route back to

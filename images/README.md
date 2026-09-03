@@ -90,6 +90,7 @@ that is the seam where the safe-cracking mechanic gets inserted between the two 
 - `*.png` (no suffix) — anti-aliased greyscale master, re-threshold it if you want a different cut
 - `*@4x.png` / `*@2x.png` — nearest-neighbour previews for looking at on a desktop
 - `svg/` — the vector source and generators
+- `screens/` — captures of the running game, not generated art (see below)
 
 ## Regenerating
 
@@ -113,6 +114,32 @@ Scene primitives include `nekoFull` / `nekoCrouch` / `povNote` (bodies), `nekoSi
 (black manga impact wedges), `speedLines`, `moon`, `skyline`, `safe`.
 
 ---
+
+## Screen captures (`screens/`)
+
+Every distinct screen in the shipping game, from the simulator at native 400x240. Unlike
+everything else in this folder these are **not** generated art — they are the real screens, so
+they go stale the moment the UI changes. Recapture rather than touch them up.
+
+| | |
+|---|---|
+| `01-title` | title, with the live dial |
+| `02-play-blackout` | mid-run — a BLACKOUT run, so the flashlight cone is visible |
+| `03-pause-menu` | the Ⓑ pause menu |
+| `04-mods-catalogue` | Modifiers — the read-only catalogue |
+| `05-debug-menu` | the Debug branch |
+| `06-screens-menu` | Debug → Screens |
+| `07-mods-picker` | Debug → Modifiers, the forced-set picker |
+| `08-safe-open` `09-times-up` `10-caught` `11-boom` | the four end panels |
+
+Captured by dropping a temporary `source/devshots.lua` into the build that stubs
+`playdate.buttonJustPressed` against a frame schedule, overrides `Mods.roll` to force a known set,
+and calls `playdate.simulator.writeToFile` on chosen frames. It is deleted again afterwards — it
+must never ship.
+
+The four end panels are reached through **Debug → Screens** in the pause menu, which sets the real
+state and calls the same panel builders the game uses, so what is captured is the shipping screen
+and not a mock of it.
 
 ## HUD layout experiments (`hud-*.png`)
 

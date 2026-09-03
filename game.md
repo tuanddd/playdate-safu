@@ -55,7 +55,7 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | `GAME_MS` | `60000` | Run length, 1 minute |
 | `DEG_PER_UNIT` | `3.6` | Crank degrees per dial unit → **1 crank revolution = 1 dial revolution** |
 | `TOL` | `2.2` | Sweet spot half-width in dial units (zone is 4.4 units ≈ 7.9° wide) |
-| `cfg.maxEngage` | `25` | Max speed to latch — 25 units/**sec** ≈ **90°/sec**. Per-run, so it lives in `Mods.buildCfg`, not `main.lua`; HAIR TRIGGER drops it to 7.5 |
+| `cfg.maxEngage` | `25` | Max speed to latch — 25 units/**sec** ≈ **90°/sec**. Per-run, so it lives in `Mods.buildCfg`, not `main.lua` |
 | `RESET_SPEED` | `80` | Speed above which progress resets — 80 units/sec ≈ **288°/sec** |
 | `DEAD_SPEED` | `1.5` | Below this the dial counts as stationary |
 | `TICK_STEP` | `4` | A tick every 4 dial units → 25 ticks per revolution |
@@ -390,9 +390,6 @@ Twelve modifiers. **Every run draws 3.** None are implemented; this section is t
 |---|---|---|---|---|---|
 | 1 | **BLACKOUT** | Perception | `channel` | `eye` + slash | The dial is not drawn. Crack it by ear |
 | 2 | **TOO LOUD** | Perception | `channel` | `volume-high` | Ticks ducked to near-silent under loud club BGM |
-| 3 | **HAIR TRIGGER** | Motor | — | `target` | `maxEngage` 0.5 → 0.15. You must crawl the last few units |
-| 4 | **GREASED** | Motor | — | `water` | The dial carries momentum after you stop cranking |
-| 5 | **STICKY** | Motor | — | `anvil` | Needs a minimum crank speed to move at all — no creeping |
 | 6 | **SCRAMBLED** | Memory | — | `arrow-left-right` | `dirs` randomised per tumbler instead of `{1,-1,1}` |
 | 7 | **FOUR TUMBLERS** | Memory | `time` | `lock` | 4 sweet spots instead of 3 |
 | 8 | **WANDERING** | Memory | — | `compass` | Targets drift, but only while you are *not* cranking. **Drift ≤ `Mods.MAX_DRIFT` (5 units/sec)** |
@@ -424,19 +421,26 @@ is now judged directly, per pair, and drives two modes.
 | **banned** | — | The run is impossible. Never offered in any mode |
 | **hard ×2** | 2 | On its own makes a run hard mode |
 | **hard ×1** | 1 | Needs a second friction to qualify |
-| normal | 0 | Everything else — 46 of the 66 pairs |
+| normal | 0 | Everything else — 22 of the 36 pairs |
 
 **A drawn triple is scored by its three pairs:** any banned pair → discard; total ≥ 2 → **HARD**;
 otherwise → **NORMAL**.
 
-**220 possible triples → 38 banned, 38 hard, 144 normal. 182 playable runs.**
+**84 possible triples → 19 banned, 24 hard, 41 normal. 65 playable runs.**
 
-#### Banned — genuinely impossible (4 pairs)
+**Nine modifiers, not twelve.** HAIR TRIGGER, GREASED and STICKY were cut after playtesting: all
+three were the same idea — degrade the player's control of the dial — and the loop already
+punishes speed errors brutally, since a graze and an over-speed both wipe progress. So they never
+added a challenge, they multiplied an existing punishment. They failed the test the rest of the
+set passes: **a modifier has to hand the player a new way to play, not worse hands.** Revising was
+not an option, because every "make the dial harder to control" idea lands in the same place.
+Three replacement slots are open.
+
+#### Banned — genuinely impossible (3 pairs)
 
 | Pair | Why |
 |---|---|
 | BLACKOUT + TOO LOUD | Both continuous channels gone; only discrete SFX text remains |
-| HAIR TRIGGER + STICKY | A floor speed above a ceiling speed — the window closes to nothing |
 | TOO LOUD + GUARD | GUARD's *only* warning before a hard game over is audio, and TOO LOUD exists to bury audio |
 | BLACKOUT + NITRO | The water layer would have to render over a pitch-black screen with no readable contrast, while a hidden tilt limit kills the run |
 
@@ -447,19 +451,14 @@ ONE SHOT + GUARD · ONE SHOT + NITRO · GUARD + NITRO
 Two ways to lose instantly in one run. Beatable, but the run becomes about not dying.
 All three together scores 6 — the signature hard-mode draw.
 
-#### Hard ×1 — friction (13 pairs)
+#### Hard ×1 — friction (8 pairs)
 
 | Pair | Why |
 |---|---|
 | BLACKOUT + DECOY | BLACKOUT eats DECOY's *visual* tell — no dial means no missing shake. Audio tell survives |
 | TOO LOUD + DECOY | The mirror: TOO LOUD buries DECOY's *audio* tell. Visual tell survives |
 | TOO LOUD + SCRAMBLED | SCRAMBLED's wrong-direction tell is audio-only, so it gets buried |
-| TOO LOUD + HAIR TRIGGER | Losing the audio speed encoding exactly when fine speed control matters most |
 | BLACKOUT + WANDERING | Targets moving with no visual reference |
-| HAIR TRIGGER + GREASED | Momentum vs. a 0.15 ceiling — you must coast in and let it decay |
-| STICKY + GREASED | Lunge to break stiction, then get carried past |
-| NITRO + GREASED | Fighting momentum is exactly what tilts the device |
-| NITRO + STICKY | Lunging to break stiction tilts it too |
 | SCRAMBLED + WANDERING | Unknown direction *and* a moving target |
 | FOUR TUMBLERS + WANDERING | Four drifting targets inside 60 s |
 | FOUR TUMBLERS + GUARD | More work against a clock that freezes |
@@ -554,10 +553,7 @@ needs a special case at its call site.
 | Field | Default | Set by |
 |---|---|---|
 | `drawDial` `showEffects` `shake` | `true` | BLACKOUT → all false *(renderer reads these; not yet consumed)* |
-| `bgmTrack` `bgmVol` `mechVol` | `sounds/bgm` `0.12` `1.0` | TOO LOUD → nightclub/0.50/0.18 · GUARD → ambience/0.45 |
-| `maxEngage` | `25` | HAIR TRIGGER → `7.5` |
-| `friction` | `nil` | GREASED → `0.90` |
-| `stiction` | `0` | STICKY → `14` |
+| `bgmTrack` `bgmVol` `mechVol` | `sounds/bgm` `0.12` `1.0` | TOO LOUD → nightclub/0.50/0.18 · GUARD → ambience/**0.26** |
 | `tumblers` | `3` | FOUR TUMBLERS → `4` |
 | `randomDirs` | `false` | SCRAMBLED |
 | `drift` | `0` | WANDERING → `Mods.MAX_DRIFT` (5) |
@@ -565,11 +561,7 @@ needs a special case at its call site.
 
 **Where each effect lives**
 
-- **GREASED / STICKY** — `readCrank`. Stiction banks sub-threshold input and releases it in one
-  shove; greasing follows the crank exactly while it turns, then coasts. Both are gated on
-  `state == STATE_PLAY`: `Run.cfg` outlives the run, so without that the title dial would still
-  be sticky after a modified game.
-- **HAIR TRIGGER / FOUR TUMBLERS / SCRAMBLED** — `checkTumbler`, via `cfg.maxEngage`,
+- **FOUR TUMBLERS / SCRAMBLED** — `checkTumbler`, via
   `cfg.tumblers` and `Run.dirs`. SCRAMBLED also fires `Sfx.wrongDir()` — a soft low thud, once per
   entry into a zone, meaning *it is here but not this way*. Audio only, by design.
 - **DECOY** — `checkDecoy`, run alongside the real tumblers. Latches like a real spot, plays
@@ -578,7 +570,8 @@ needs a special case at its call site.
 - **WANDERING** — `driftTargets`, only while the dial is under `DEAD_SPEED`. Unlatched spots only.
 - **GUARD** — `updateGuard`. A footstep every 5–9 s, then `GUARD_GRACE_MS` (3000) to stop. Still
   moving when the grace expires and the run ends. The grace is what makes an audio-only hard-fail
-  fair.
+  fair. The ambience bed sits well back at **0.26** so the steps cut through it: missing one is a
+  hard game over, so it has to be the loudest thing in the run.
 - **NITRO** — `updateNitro`. X axis only. The first 30 frames calibrate whatever angle the player
   actually holds the device at, so nobody is punished for their grip; past `NITRO_LIMIT` (0.35 g
   from neutral) the run ends. Exposes `Run.tilt` for the water layer to draw.
@@ -593,18 +586,102 @@ played through. `Mods.buildCfg` and the pair rules are cross-checked against thi
 (12 modifiers, 38 banned / 38 hard / 144 normal triples); the *feel* of every constant above —
 friction, stiction, drift, grace, tilt limit — is a first guess awaiting a device.
 
+### Debug modifier picker
+
+Pause menu → **Debug**, which is a branch rather than a page:
+
+    Menu
+     └ Debug
+        ├ Screens      Safe open · Time's up · Caught · Boom
+        └ Modifiers    force any 3
+
+**Screens** drops straight into a finished end screen. It builds the *real* panel — the clock and
+tumbler count it reads are already set — so what you inspect is the shipping screen, not a mock of
+it. The four end states are the only screens worth a jump: the title is already one Ⓑ away, the
+docked notice appears by docking the crank, and the rest are reachable by playing.
+
+**Modifiers** is the picker. A 2×3 grid over two pages of all modifiers; d-pad moves, Ⓐ toggles,
+Ⓑ backs out to Debug. The cursor runs past the last modifier onto a **START** button, which only goes live
+on exactly three picks — confirming is its own deliberate move, so a mis-tap on the third
+modifier costs nothing. The header counts the picks and, once there are three, names the verdict
+the pair rules give them.
+
+**The page resets every time it is opened.** No debug run ever inherits the previous one's
+selection.
+
+The cursor **inverts** a cell and a pick **outlines** it, so both states read at once.
+
+**Illegal sets are deliberately allowed.** Being able to force BLACKOUT + TOO LOUD and watch what
+actually happens is the whole reason the tool exists, so the header labels the selection `BANNED`
+rather than refusing it.
+
+`startGame(forced)` takes the override; with no argument it rolls as usual, so the normal path is
+untouched.
+
+### Menu audio
+
+Opening the pause menu ducks the run's music to **28%** (`Sfx.bgmDuck`), so the run audibly moves
+into the background; closing it restores the exact volume that run was using, whichever of the
+three beds it happens to be. Quitting to the title stops the bed outright, and a new run's
+`bgmStart` sets the volume fresh, so no path can leave it stuck ducked.
+
+| Sound | Level | Why |
+|---|---|---|
+| `ui-cancel-back` | asset **+15 dB** (peak −8.3) | was ~7 dB under its siblings, and all three already play at full volume, so it had to be fixed in the asset |
+| `ui-hover` | played at **0.45** | fires on every cursor move; at full volume a held d-pad turns the menu into a machine gun |
+| `ui-confirm` | 1.0 | unchanged |
+
+**`footstep` is normalised with `loudnorm`, not compression.** Missing a step is a hard game over,
+so it has to be the loudest thing in a GUARD run, and the obvious `acompressor` + makeup-gain +
+`alimiter` chain made it *quieter* — the limiter pulled the whole signal down faster than the gain
+raised it. `loudnorm=I=-10:TP=-1.0` took it from mean −28.4 dB to **−20.2 dB** with a −1.0 dB peak
+and no clipping. Reach for loudness targeting here, not a compressor chain.
+
+### Performance probe
+
+On the **system menu** (`perf` checkmark), because there is no spare button during play and the
+numbers only mean anything on the device.
+
+    50 FPS  work 6.2/9 of 20ms  bake 98  start 12
+
+**It reports work, not the frame interval.** Interval is the obvious thing to measure and it is
+almost useless: the SDK sleeps to hold the refresh rate, so a frame doing 4 ms of work and one
+doing 19 both report 20 ms. Interval only ever tells you a frame was *dropped*. Work time tells
+you how much room is left, which is the question worth asking before adding the next effect.
+
+`bake` is the one-off image build (`buildBackground` / `buildBlackout`) and `start` is
+`startGame` itself — audio load, target generation, the roll. Both are run-start costs, kept
+separate from the per-frame number so a startup hitch cannot be mistaken for a frame-rate problem.
+
+**A single bad frame reads as a full second of them.** The window is 50 frames, so one 120 ms
+hitch sits in `worst` for a second before rolling out. Watch whether it recurs, not whether it
+appears.
+
 ### 12c. Visual layer — implemented
 
 Five modifiers draw something.
 
 **BLACKOUT** — `buildBlackout()` bakes the whole dark room once. A flashlight at `(300, 272)`,
-below the bottom edge, throws a cone drawn in two passes:
+below the bottom edge.
 
-- `Art.drawLightBeam` paints the beam itself onto the black room, sparsely (12%→42%), so the cone
-  is visible hanging in the empty dark and not only where it happens to land on a card.
-- `Art.drawLightMask` builds the same cone as a stencil for the cards, with a **floor of 80%** —
-  a card dithered below roughly 70% loses its black text against the black room, and which
-  modifiers are running is information the player cannot do without.
+**The room is dark, not empty.** A torch still picks the vault door out of the black, so the door
+and its dial well are drawn through the beam — present, but far too dim to read anything off. The
+dial itself is never drawn; only the fixed chrome is.
+
+**The beam is a frustum, not a wedge.** Sweeping from a single point made it vanishingly narrow at
+the source, which clipped the bottom card. It now starts from a base segment `BASE_HALF` (88) wide
+— already wider than the card column — so the throw itself can stay tight at `CONE_HALF` (0.16 rad).
+
+Three passes down that same cone, because the three things it touches want different curves:
+
+| Pass | Range | Why |
+|---|---|---|
+| `BEAM` | 8%→32% | light hanging in the air, so the cone is visible in empty dark |
+| `DOOR` | 10%→58% | falls away steeply, so the vault reads as picked out of the dark rather than floodlit |
+| `CARD` | **78%→100%** | a card below ~70% loses its black text against the black room |
+
+That high card floor is why the door needs its own mask: one shared curve either flattens the
+door's falloff or makes the cards unreadable.
 
 The timer is drawn after `clearStencil`, so the blackout never touches it. No dial, no shake, no
 SFX text, no Ⓐ prompt: the run is played by ear.
@@ -627,17 +704,43 @@ nothing pops out mid-flight. They spawn only in `x = 45..175` and are culled pas
 information — the card already states the rule, which is why losing it under BLACKOUT costs
 nothing.
 
-**GUARD** — `Art.makeMarks` bakes the manga `// \\` with **no glyph between the strokes**, and one
-fires alongside every footstep. Built by hand rather than set in the SFX font, which has no slash
+**GUARD** — `Art.makeMarks` bakes the manga `// \\` with **no glyph between the strokes**, and the
+pairs are spaced apart or they read as one four-stroke smear at this size. One fires every
+`GUARD_MARK_MS` (320) for the **whole grace window**, not once on the step, so the warning is
+present the entire time it is still answerable.
+
+They are **pinned along the top edge**, not scattered around the dial: the steps come from outside
+the room, and a cue that lands somewhere different every time reads as noise rather than a
+direction. Built by hand rather than set in the SFX font, which has no slash
 glyphs, but with the same frames/fades shape so it wiggles in and dithers out like `K-CHIK` does.
 
 It does **not** lift the TOO LOUD + GUARD ban. The marks say a sound happened, not that it was
 footsteps, and carry none of the three-second deadline that actually decides the run — so they are
 atmosphere, not a telegraph, and no substitute for hearing the cue.
 
-**NITRO** — `Art.drawWaterLayer` draws last, over everything. The surface is a damped spring
-(`vel = (vel + (target - angle) * 0.06) * 0.88`) so it overshoots and settles instead of snapping;
-that lag is what reads as liquid. X axis only, so it is a left/right balance. Waterline sits at
+**NITRO** — `Art.drawWater` draws last, over everything. The surface is a **one-dimensional height
+field**: 21 columns, each a mass on a spring pulled toward the tilted plane, each shoving its
+neighbours twice per frame. That coupling is the whole point — it lets a disturbance travel across
+the surface, pile up against an end and come back.
+
+Summed sine waves were tried first and always read as a moving graph rather than liquid: a formula
+has no memory of being disturbed, so nothing ever sloshes *from* anywhere.
+
+Swinging the device injects velocity at the two ends (`wv[1] += kick`, `wv[N] -= kick`), the way
+water climbs the side of a real glass. Held steady at any angle it flattens on its own. Tilt
+itself is a separate damped spring, so the plane lags the device.
+
+**Surges make it an active balance, not a stillness test.** Every few seconds the liquid is shoved
+toward one end and held there for about a second, so holding the device dead level is no longer
+safe — you have to tilt *into* a surge to cancel it and then recover as it passes. What spills is
+the **water's** angle (`NITRO_SPILL`, 0.30 rad), not the device's; that distinction is the whole
+modifier. Holding still through a single surge survives, but only just — measured, not assumed.
+
+**The failure is armed late.** Calibration averages the first 30 frames, and a hand still moving
+then produces a garbage neutral — the player would be killed a moment into a run for a tilt they
+never made. `NITRO_ARM_FRAMES` (45) holds the fail condition back while the neutral keeps trimming
+toward where they actually hold the device. The level itself is live and sloshing from frame one;
+only the death is delayed. X axis only, so it is a left/right balance. Waterline sits at
 `y = 210` and the fill is sparse: it is a hazard overlay, not a curtain, and burying the card
 column would hide the run's own rules.
 
@@ -668,6 +771,10 @@ bottom edge**, sold with a dither ramp.
 purely by ear. This is the only modifier that removes a channel completely rather than degrading
 it.
 
+The cone is identical in every run — only the cards beneath it change — so both passes are baked
+once per boot and reused (`Art.lightImages`). Eight dithered polygon fills at up to 350 px is the
+expensive part of a BLACKOUT run's first frame, and paying it once instead of once per run is free.
+
 Build: bake the cone once at load as a Bayer-dithered mask (density falling off with distance and
 angle), then `gfx.setStencilImage()` so card drawing only lands inside the cone. Order: fill black
 → cards through the stencil → timer on top, unstencilled. Static mask, so it costs nothing per
@@ -683,14 +790,6 @@ events, five distinct sounds, no gaps. BLACKOUT is what the tick design was alwa
 multiplier inside `Sfx.tick/sweetSpot/graze` (ticks ~0.1, K-CHIK ~0.35 so hits still cut through).
 Adds a recurring **music-note SFX** (Pictogrammers *music-note*) that launches from the **top
 edge** at a random diagonal, left or right, flanked by `// \\` emphasis strokes.
-
-**3 · HAIR TRIGGER** — `cfg.maxEngage = 0.15`. No UI.
-
-**4 · GREASED** — `readCrank` keeps a velocity: `vel = vel * 0.90 + delta`; the dial advances by
-`vel`. Coasting still ticks and still grazes. No UI — the coasting is self-evident.
-
-**5 · STICKY** — accumulate sub-threshold input; release it in one pop when it breaks stiction.
-The pop can shove you through a zone; that is the point. No UI.
 
 **6 · SCRAMBLED** — `cfg.dirs` randomised per tumbler. **No UI tell.** Ships with an *audio*
 wrong-direction cue only, since `if dir ~= need then return end` is currently silent.
@@ -722,7 +821,7 @@ Tilt past the limit and it spills — run over.
 
 ### Axes (descriptive only)
 
-Perception 2 · Motor 3 · Memory 3 · Risk 2 · Event 1 · Body 1
+Perception 2 · Memory 3 · Risk 2 · Event 1 · Body 1 — **Motor is empty**
 
 Kept as a way to talk about what a modifier twists, and as a rough guide when adding new ones —
 Event and Body have one member each, so those are the thin spots. They no longer gate any draw.

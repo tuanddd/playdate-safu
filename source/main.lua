@@ -65,7 +65,50 @@ local sfxImages = {
     marks = Art.makeMarks(1.2),
 }
 local tinyTick = Art.makeTiny("tik")
-local showFps = false
+-- Performance probe. Toggled from the system menu, because Ⓑ became the pause
+-- menu and there is no spare button during play - and because the numbers that
+-- matter are only real on the device, not in the simulator.
+local perfOn = false
+local frameTimes = {}     -- interval between frames: shows DROPPED frames
+local workTimes = {}      -- time actually spent in update+draw: shows HEADROOM
+local frameIdx = 1
+local PERF_WINDOW <const> = 50
+local bakeMs = 0          -- one-off background bake
+local startMs = 0         -- one-off startGame cost
+
+-- Interval alone cannot tell you how much room is left: the SDK sleeps to hold
+-- the refresh rate, so a frame doing 4 ms of work and one doing 19 both report
+-- 20 ms. Work time is the number that says whether the next effect fits.
+local function perfSample(dt, work)
+    frameTimes[frameIdx] = dt
+    workTimes[frameIdx] = work
+    frameIdx = frameIdx % PERF_WINDOW + 1
+end
+
+-- Average and worst frame over the last second, plus the bake. Worst matters
+-- more than the average: a 50 fps average made of occasional 40 ms spikes still
+-- feels like a stutter on the crank.
+local function stats(t)
+    local sum, worst = 0, 0
+    for _, v in ipairs(t) do
+        sum = sum + v
+        if v > worst then worst = v end
+    end
+    return sum / math.max(#t, 1), worst
+end
+
+local function drawPerf()
+    if not perfOn or #frameTimes == 0 then return end
+    local avg = stats(frameTimes)
+    local wavg, wworst = stats(workTimes)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillRect(0, 225, 400, 15)
+    gfx.setFont(Art.numFont)
+    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+    gfx.drawText(string.format("%d FPS  work %.1f/%.0f of 20ms  bake %d  start %d",
+        math.floor(1000 / math.max(avg, 0.001) + 0.5), wavg, wworst, bakeMs, startMs), 5, 227)
+    gfx.setImageDrawMode(gfx.kDrawModeCopy)
+end
 
 local state = STATE_TITLE
 local rawPos, posOffset, dialPos = 0, 0, 0
@@ -86,7 +129,25 @@ local menuIndex = 1
 local menuPage = "main"
 local menuClock = 0
 local modsPage = 1
-local MENU_ITEMS <const> = { "Resume", "Modifiers", "Quit" }
+local MENU_ITEMS <const> = { "Resume", "Modifiers", "Debug", "Quit" }
+-- Debug picker: force an exact set instead of rolling for one. Illegal
+-- combinations are deliberately allowed - being able to force BLACKOUT + TOO
+-- LOUD and watch what happens is the entire point of a debug tool - so the
+-- header names the verdict rather than blocking the choice.
+-- Cursor runs 1..#Mods.list over the grid, then one past the end for START, so
+-- confirming is an explicit move rather than something the third pick does to
+-- you. Cleared every time the page is opened - a debug run never inherits the
+-- last one's selection.
+local dbgCursor = 1
+local dbgPage = 1
+local dbgSel = {}
+-- Debug is a branch now: Screens jumps straight to an end screen to inspect it,
+-- Modifiers is the forced-set picker.
+local DEBUG_ITEMS <const> = { "Screens", "Modifiers" }
+local SCREEN_ITEMS <const> = { "Safe open", "Time's up", "Caught", "Boom" }
+local SCREEN_KIND <const> = { "win", "timeup", "caught", "boom" }
+local dbgMenuIndex = 1
+local dbgScreenIndex = 1
 local doorImage = nil
 -- The door, the dial well, the timer plate chrome and the three modifier cards
 -- never change during a run, so they are drawn once into this image and blitted
@@ -103,8 +164,6 @@ local lastTime = pd.getCurrentTimeMilliseconds()
 Run = { mods = {}, mode = "normal", cfg = nil, dirs = DIRS }
 
 -- Modifier working state, all reset by startGame.
-local vel = 0              -- GREASED: coasting velocity
-local stickHeld = 0        -- STICKY: input banked below the stiction threshold
 local decoyTarget = nil    -- DECOY: the spot that lies
 local decoyArmed = true
 local driftSign = 1        -- WANDERING: which way the spots creep
@@ -114,8 +173,12 @@ local nitroNeutral = 0     -- NITRO: calibrated resting tilt
 local nitroCal = 0
 local wrongTold = true     -- SCRAMBLED: one wrong-direction tell per zone entry
 local loseReason = "timeup"
--- Tilt away from the calibrated neutral, in g on the x axis only, that spills it.
-local NITRO_LIMIT <const> = 0.35
+-- What spills it is the WATER's angle, not the device's. That distinction is the
+-- whole modifier: surges tip the liquid on their own, so holding the device dead
+-- level is no longer safe - you have to tilt INTO a surge to cancel it.
+local NITRO_SPILL <const> = 0.30
+-- Surges: a slow push on the surface from one side, then a lull.
+local surge, surgeTo, surgeAt, surgeUntil = 0, 0, 0, 0
 -- BLACKOUT's flashlight sits below the bottom edge, under the card column.
 local FLASH_X <const> = 300
 local FLASH_Y <const> = 272
@@ -123,9 +186,27 @@ local blackoutBg = nil
 local notes = {}           -- TOO LOUD: music notes crossing the screen
 local noteAt = 0
 local noteBurst = nil
-local nitroAngle, nitroVel = 0, 0   -- NITRO: sloshing surface
+local nitroAngle, nitroVel = 0, 0   -- NITRO: surface tilt, a damped spring
+-- NITRO's surface: one mass-on-a-spring per column, coupled to its neighbours.
+-- WATER_K pulls each column back to the tilted plane, WATER_SPREAD is how hard
+-- it shoves the columns either side (that coupling is what makes a disturbance
+-- travel and pile up against an end), WATER_DAMP stops it ringing forever.
+local WATER_N <const> = 21
+local WATER_K <const> = 0.022
+local WATER_DAMP <const> = 0.945
+local WATER_SPREAD <const> = 0.14
+local wh, wv = {}, {}
 local NITRO_CAL_FRAMES <const> = 30
+-- Frames after calibration before the run can actually be lost. Calibrating
+-- against a hand that is still moving produces a garbage neutral, and without
+-- this the player is killed a moment into a run for a tilt they never made.
+local NITRO_ARM_FRAMES <const> = 45
+local nitroArm = 0
 local GUARD_GRACE_MS <const> = 3000
+-- The `// \\` keeps firing for the whole grace window rather than once on the
+-- step, so the warning is present the entire time it is still answerable.
+local GUARD_MARK_MS <const> = 320
+local guardMarkAt = 0
 
 function Run.has(id)
     for _, m in ipairs(Run.mods) do
@@ -203,7 +284,8 @@ local function placeAround(set, spread)
     return x, y
 end
 
-local function startGame()
+local function startGame(forced)
+    local startT0 = pd.getCurrentTimeMilliseconds()
     math.randomseed(now())
     rawPos = math.random(0, 99)
     posOffset = 0
@@ -211,7 +293,14 @@ local function startGame()
     -- roll returns nil only if 500 attempts all hit a banned pair, which 182
     -- playable triples out of 220 makes vanishingly unlikely - but Run.has()
     -- iterates this, so it may never be nil.
-    local picked, mode = Mods.roll(3)
+    local picked, mode
+    if forced then
+        picked = forced
+        local _, m = Mods.score(forced)
+        mode = m or "banned"      -- score returns nil for a banned pair
+    else
+        picked, mode = Mods.roll(3)
+    end
     Run.mods, Run.mode = picked or {}, mode or "normal"
     Run.cfg = Mods.buildCfg(Run.mods)
     Run.dirs = Mods.rollDirs(Run.cfg.tumblers, Run.cfg.randomDirs)
@@ -234,13 +323,17 @@ local function startGame()
         end
     end
     decoyArmed = true
-    vel, stickHeld = 0, 0
     driftSign = (math.random(2) == 1) and 1 or -1
     guardDeadline = nil
+    guardMarkAt = 0
     guardAt = now() + math.random(5000, 9000)
-    nitroNeutral, nitroCal = 0, 0
+    nitroNeutral, nitroCal, nitroArm = 0, 0, 0
+    surge, surgeTo = 0, 0
+    surgeAt = now() + math.random(2500, 4000)
+    surgeUntil = 0
     Run.tilt = 0
     nitroAngle, nitroVel = 0, 0
+    for i = 1, WATER_N do wh[i], wv[i] = 0, 0 end
     notes = {}
     noteAt = now() + 600
     blackoutBg = nil
@@ -266,6 +359,7 @@ local function startGame()
     Sfx.setMechVolume(Run.cfg.mechVol)
     Sfx.start()
     Sfx.bgmStart(Run.cfg.bgmTrack, Run.cfg.bgmVol)
+    startMs = pd.getCurrentTimeMilliseconds() - startT0
 end
 
 -- milliseconds in the current frame, for turning per-frame deltas into per-second
@@ -278,31 +372,6 @@ end
 local function readCrank()
     local change = pd.getCrankChange()
     local delta = change / DEG_PER_UNIT
-    -- Play only. Run.cfg outlives the run, so without the state check the title
-    -- screen's dial would still be sticky or coasting after a modified game.
-    local cfg = (state == STATE_PLAY) and Run.cfg or nil
-
-    if cfg then
-        -- STICKY: below the threshold the dial does not budge, but the input is
-        -- banked and released in one shove once you push hard enough. The shove
-        -- can carry you straight through a sweet spot; that is the modifier.
-        if cfg.stiction > 0 then
-            if unitsPerSec(delta) < cfg.stiction then
-                stickHeld = stickHeld + delta
-                if math.abs(stickHeld) > 40 then stickHeld = 40 * (stickHeld > 0 and 1 or -1) end
-                delta = 0
-            else
-                delta = delta + stickHeld
-                stickHeld = 0
-            end
-        end
-        -- GREASED: follow the crank exactly while it turns, then coast. Coasting
-        -- still ticks and can still graze - it is real movement.
-        if cfg.friction then
-            if math.abs(delta) > 0.001 then vel = delta else vel = vel * cfg.friction end
-            delta = vel
-        end
-    end
 
     rawPos = rawPos + delta
     dialPos = (rawPos + posOffset) % 100
@@ -509,7 +578,7 @@ local function drawHud()
     if Run.cfg and Run.cfg.oneShot then tx = math.sin(now() / 26) * 1.6 end
     drawIconLabel(Art.iconA, "OPEN?", PLAY_CX + tx, 186, false)
     drawIconLabel(Art.iconB, "MENU", PLAY_CX, 204, false)
-    if showFps then pd.drawFPS(370, 224) end
+    drawPerf()
 end
 
 local WIGGLE_MS <const> = 34
@@ -548,18 +617,29 @@ end
 -- the three cards exist, the cards lit by a flashlight from below the bottom
 -- edge. Everything is static except the timer digits, so it is baked once.
 local function buildBlackout()
-    local mask = gfx.image.new(400, 240, gfx.kColorBlack)
-    gfx.pushContext(mask)
-        Art.drawLightMask(FLASH_X, FLASH_Y)
+    local beam, doorMask, cardMask = Art.lightImages(FLASH_X, FLASH_Y)
+
+    -- The room is dark, not empty. A torch still picks the vault door out of the
+    -- black, so the door and its dial well are drawn faded and lit through the
+    -- same cone - present, but far too dim to read anything off. The dial itself
+    -- is never drawn; only the fixed chrome is.
+    local door = gfx.image.new(400, 240, gfx.kColorBlack)
+    gfx.pushContext(door)
+        Art.drawDoor()
+        Art.drawDialWell(PLAY_CX, PLAY_CY, WELL_R)
     gfx.popContext()
 
     local img = gfx.image.new(400, 240, gfx.kColorBlack)
     gfx.pushContext(img)
-        -- the beam first, so the cone is visible in the empty dark and not only
-        -- wherever it happens to land on a card
-        Art.drawLightBeam(FLASH_X, FLASH_Y)
-        -- then the cards through it, dimming toward the top of the throw
-        gfx.setStencilImage(mask)
+        -- the door's own falloff does the dimming; no second fade on top of it
+        gfx.setStencilImage(doorMask)
+        door:draw(0, 0)
+        gfx.clearStencil()
+        -- the beam over it, so the cone reads as light hanging in the air
+        beam:draw(0, 0)
+        -- the cards last and at full strength: they are the one thing that must
+        -- stay legible in the dark
+        gfx.setStencilImage(cardMask)
         for i, m in ipairs(Run.mods or {}) do
             Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
                 Mods.iconImage(m.icon), m.name, m.sub)
@@ -580,21 +660,30 @@ end
 
 local function drawNitro()
     if not (Run.cfg and Run.cfg.nitro) then return end
-    Art.drawWaterLayer(nitroAngle, math.min(math.abs(Run.tilt or 0) / NITRO_LIMIT, 1))
+    Art.drawWater(210, math.tan(nitroAngle), wh,
+        math.min(math.abs(nitroAngle) / NITRO_SPILL, 1))
 end
 
 local function drawScene()
     local cfg = Run.cfg
     if cfg and not cfg.drawDial then
-        if not blackoutBg then blackoutBg = buildBlackout() end
+        if not blackoutBg then
+            local t0 = now()
+            blackoutBg = buildBlackout()
+            bakeMs = now() - t0
+        end
         blackoutBg:draw(0, 0)
         Art.drawTimerText(timerTX, timerTY, formatTime(remaining))
-        if showFps then pd.drawFPS(370, 224) end
+        drawPerf()
         -- no dial, no shake, no SFX text, and no Ⓐ prompt: the run is played by ear
         return
     end
 
-    if not bgImage then bgImage = buildBackground() end
+    if not bgImage then
+        local t0 = now()
+        bgImage = buildBackground()
+        bakeMs = now() - t0
+    end
     bgImage:draw(0, 0)
     local ox, oy = 0, 0
     local sage = now() - shakeStart
@@ -629,6 +718,14 @@ local function updateGuard(speed)
     if not Run.cfg.guard then return end
     local t = now()
     if guardDeadline then
+        if t >= guardMarkAt then
+            guardMarkAt = t + GUARD_MARK_MS
+            -- Pinned to the top edge rather than scattered around the dial: the
+            -- steps come from outside the room, and a cue that lands somewhere
+            -- different every time reads as noise instead of a direction.
+            local set = sfxImages.marks
+            addEffect(set, math.random(60, 340), set.hh + 14, 520)
+        end
         if t >= guardDeadline then
             if speed > DEAD_SPEED then
                 loseRun("caught")
@@ -639,9 +736,8 @@ local function updateGuard(speed)
         end
     elseif t >= guardAt then
         Sfx.footstep()
-        local x, y = placeAround(sfxImages.marks, 30)
-        addEffect(sfxImages.marks, x, y, 900)
         guardDeadline = t + GUARD_GRACE_MS
+        guardMarkAt = t
     end
 end
 
@@ -658,7 +754,13 @@ local function updateNitro()
         return
     end
     Run.tilt = x - nitroNeutral
-    if math.abs(Run.tilt) > NITRO_LIMIT then loseRun("boom") end
+    -- The level is live and sloshing from the first frame; only the failure is
+    -- held back, so the player can see where they are before it can cost them.
+    if nitroArm < NITRO_ARM_FRAMES then
+        nitroArm = nitroArm + 1
+        -- still settling: keep trimming the neutral toward where they actually hold it
+        nitroNeutral = nitroNeutral + (x - nitroNeutral) * 0.04
+    end
 end
 
 -- TOO LOUD: the club is loud enough to see. Notes launch off the top edge on a
@@ -690,9 +792,51 @@ end
 -- the device angle. That lag is what makes it read as liquid.
 local function updateSlosh()
     if not Run.cfg.nitro then return end
-    local target = -(Run.tilt or 0) * 0.8
+
+    -- A surge shoves the liquid toward one end and holds it there for a beat.
+    -- Riding one out means tilting the device the OTHER way until it passes, so
+    -- the modifier is an active balancing act rather than "keep still".
+    local t = now()
+    if t >= surgeAt then
+        surgeTo = (math.random(2) == 1 and 1 or -1) * (0.15 + math.random() * 0.09)
+        surgeUntil = t + math.random(900, 1600)
+        surgeAt = surgeUntil + math.random(1600, 3200)
+        local k = surgeTo * 260          -- and it arrives as a visible splash
+        wv[1] = wv[1] + k
+        wv[WATER_N] = wv[WATER_N] - k
+    elseif surgeTo ~= 0 and t >= surgeUntil then
+        surgeTo = 0
+    end
+    surge = surge + (surgeTo - surge) * 0.06
+
+    local target = surge - (Run.tilt or 0) * 0.8
     nitroVel = (nitroVel + (target - nitroAngle) * 0.06) * 0.88
     nitroAngle = nitroAngle + nitroVel
+    -- Swinging the device throws water at the ends, the way it climbs the side of
+    -- a real glass. Held steady at any angle it flattens out on its own.
+    local kick = nitroVel * 900
+    wv[1] = wv[1] + kick
+    wv[WATER_N] = wv[WATER_N] - kick
+
+    for i = 1, WATER_N do
+        wv[i] = (wv[i] - wh[i] * WATER_K) * WATER_DAMP
+        wh[i] = math.max(-16, math.min(16, wh[i] + wv[i]))
+    end
+    -- two propagation passes: each column pushes its neighbours toward its own
+    -- height, which is what turns a local splash into a travelling wave
+    for _ = 1, 2 do
+        for i = 1, WATER_N do
+            local l = wh[i - 1] or wh[i]
+            local r = wh[i + 1] or wh[i]
+            if wv[i - 1] then wv[i - 1] = wv[i - 1] + (wh[i] - l) * WATER_SPREAD end
+            if wv[i + 1] then wv[i + 1] = wv[i + 1] + (wh[i] - r) * WATER_SPREAD end
+        end
+    end
+
+    -- Checked here, after the surface has moved, and only once armed.
+    if nitroArm >= NITRO_ARM_FRAMES and math.abs(nitroAngle) > NITRO_SPILL then
+        loseRun("boom")
+    end
 end
 
 local function updatePlay(dt)
@@ -869,6 +1013,7 @@ end
 -- blitted underneath, and update() runs none of the play logic while it is up.
 
 local function openMenu()
+    Sfx.bgmDuck(true)
     menuImage = gfx.getDisplayImage()
     menuIndex = 1
     menuPage = "main"
@@ -877,6 +1022,7 @@ local function openMenu()
 end
 
 local function closeMenu()
+    Sfx.bgmDuck(false)
     menuImage = nil
     state = STATE_PLAY
 end
@@ -907,12 +1053,150 @@ local function drawCursor(x, y)
     Art.iconHand:draw(x + poke, y)
 end
 
+-- A plain centred list, for the debug branches. The main menu keeps its own
+-- version because it also has to clear the logo hanging into the panel.
+local function drawSimpleMenu(items, index, heading)
+    local rowH <const> = 20
+    local measures = {}
+    for i, l in ipairs(items) do measures[i] = { l, Art.numFont } end
+    if heading then measures[#measures + 1] = { heading, Art.numFont } end
+    gfx.setFont(Art.numFont)
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
+    local lastTop, lastH = Art.inkBand(Art.numFont, items[#items])
+    local HEAD <const> = heading and 24 or 0
+    local x, y, w, h, padX, padY =
+        menuBox(measures, #items, rowH, lastTop + lastH, HEAD, 170)
+    Art.drawPanel(x, y, w, h)
+    if heading then
+        gfx.drawTextAligned(heading, 200, y + padY, kTextAlignment.center)
+    end
+    for i, label in ipairs(items) do
+        local ry = y + padY + HEAD + (i - 1) * rowH
+        local lw = gfx.getTextSize(label)
+        local lx = math.floor(200 - lw / 2)
+        if i == index then
+            drawCursor(lx - CURSOR_GAP - CURSOR_W, ry + inkTop + math.floor((inkH - 16) / 2))
+        end
+        gfx.drawText(label, lx, ry)
+    end
+end
+
+-- Drop straight into a finished end screen. Everything the panel reads is
+-- already set - the clock, the tumbler count - so the panel it builds is the
+-- real one, not a mock of it.
+local function jumpScreen(kind)
+    menuImage = nil
+    Sfx.bgmStop()
+    pd.stopAccelerometer()
+    effects = {}
+    if kind == "win" then
+        tumbler = (Run.cfg and Run.cfg.tumblers or 3) + 1
+        winPanel = buildWinPanel()
+        winPhase, winClock = 3, 0
+        state = STATE_WIN
+    else
+        loseReason = kind
+        losePanel = buildLosePanel()
+        losePhase, loseClock = 3, 0
+        state = STATE_LOSE
+    end
+end
+
 local function drawMenu()
     if menuImage then menuImage:draw(0, 0) end
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.fillRect(0, 0, 400, 240)
     gfx.setColor(gfx.kColorBlack)
+
+    if menuPage == "debug" then
+        drawSimpleMenu(DEBUG_ITEMS, dbgMenuIndex, "DEBUG")
+        return
+    end
+
+    if menuPage == "dbgscreens" then
+        drawSimpleMenu(SCREEN_ITEMS, dbgScreenIndex, "SCREENS")
+        return
+    end
+
+    if menuPage == "dbgmods" then
+        local COLS <const>, ROWS <const> = 2, 3
+        local PER <const> = COLS * ROWS
+        local CELL_W <const>, CELL_H <const> = 134, 44
+        local COL_GAP <const>, ROW_GAP <const> = 10, 6
+        local PADX <const>, PADY <const> = 14, 10
+        local HEAD <const> = 18
+        local boxW = PADX * 2 + COLS * CELL_W + COL_GAP
+        local boxH = PADY * 2 + HEAD + ROWS * CELL_H + (ROWS - 1) * ROW_GAP + 30
+        local bx, by = math.floor(200 - boxW / 2), math.floor(120 - boxH / 2)
+        Art.drawPlate(bx, by, boxW, boxH)
+
+        local _, mode = Mods.score(dbgSel)
+        gfx.setFont(Art.numFont)
+        gfx.drawText(string.format("PICK 3   %d/3", #dbgSel), bx + PADX, by + PADY)
+        if #dbgSel == 3 then
+            gfx.drawTextAligned(string.upper(mode or "banned"),
+                bx + boxW - PADX, by + PADY, kTextAlignment.right)
+        end
+
+        local first = (dbgPage - 1) * PER + 1
+        for i = 0, PER - 1 do
+            local idx = first + i
+            local m = Mods.list[idx]
+            if m then
+                local cx = bx + PADX + (i % COLS) * (CELL_W + COL_GAP)
+                local cy = by + PADY + HEAD + math.floor(i / COLS) * (CELL_H + ROW_GAP)
+                local on = false
+                for _, id in ipairs(dbgSel) do if id == m.id then on = true end end
+                -- cursor inverts the cell, a pick outlines it, so both read at once
+                if idx == dbgCursor then
+                    gfx.setColor(gfx.kColorBlack)
+                    gfx.fillRoundRect(cx - 4, cy - 3, CELL_W, CELL_H - 2, 4)
+                    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+                end
+                if on then
+                    gfx.setColor(idx == dbgCursor and gfx.kColorWhite or gfx.kColorBlack)
+                    gfx.setLineWidth(2)
+                    gfx.drawRoundRect(cx - 4, cy - 3, CELL_W, CELL_H - 2, 4)
+                    gfx.setLineWidth(1)
+                end
+                local icon = Mods.iconImage(m.icon)
+                if icon then icon:draw(cx, cy + 1) end
+                gfx.setFont(Art.titleFont)
+                gfx.drawText(m.name, cx + 20, cy)
+                gfx.setFont(Art.subFont)
+                gfx.drawTextInRect(m.sub, cx + 20, cy + 15, CELL_W - 24, 26)
+                gfx.setImageDrawMode(gfx.kDrawModeCopy)
+            end
+        end
+        -- START: reachable like any other cell, and only live on exactly three
+        local ready = #dbgSel == 3
+        local focus = dbgCursor > #Mods.list
+        local sw, sh = 92, 20
+        local sx, sy = 200 - sw // 2, by + boxH - sh - 8
+        gfx.setColor(gfx.kColorBlack)
+        gfx.setLineWidth(2)
+        if focus and ready then
+            gfx.fillRoundRect(sx, sy, sw, sh, 4)
+            gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+        else
+            if not ready then
+                gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+            end
+            gfx.drawRoundRect(sx, sy, sw, sh, 4)
+            gfx.setColor(gfx.kColorBlack)
+        end
+        gfx.setFont(Art.numFont)
+        local it, ih = Art.inkBand(Art.numFont, Art.CAPS)
+        gfx.drawTextAligned("START", 200, sy + (sh - ih) // 2 - it, kTextAlignment.center)
+        gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        gfx.setLineWidth(1)
+        if focus and not ready then
+            gfx.setFont(Art.subFont)
+            gfx.drawTextAligned("pick 3 first", 200, sy - 13, kTextAlignment.center)
+        end
+        return
+    end
 
     if menuPage == "mods" then
         -- Catalogue of every modifier, not just this run's: 12 across two pages,
@@ -986,6 +1270,90 @@ end
 local function updateMenu(dt)
     menuClock = menuClock + dt
     pd.getCrankChange()   -- drain, or the crank jumps when play resumes
+    if menuPage == "debug" then
+        if pd.buttonJustPressed(pd.kButtonUp) then
+            dbgMenuIndex = (dbgMenuIndex - 2) % #DEBUG_ITEMS + 1
+            Sfx.uiHover()
+        elseif pd.buttonJustPressed(pd.kButtonDown) then
+            dbgMenuIndex = dbgMenuIndex % #DEBUG_ITEMS + 1
+            Sfx.uiHover()
+        elseif pd.buttonJustPressed(pd.kButtonB) then
+            Sfx.uiBack()
+            menuPage = "main"
+        elseif pd.buttonJustPressed(pd.kButtonA) then
+            Sfx.uiConfirm()
+            if DEBUG_ITEMS[dbgMenuIndex] == "Screens" then
+                menuPage = "dbgscreens"
+                dbgScreenIndex = 1
+            else
+                menuPage = "dbgmods"
+                dbgSel = {}
+                dbgCursor, dbgPage = 1, 1
+            end
+        end
+        return
+    end
+
+    if menuPage == "dbgscreens" then
+        if pd.buttonJustPressed(pd.kButtonUp) then
+            dbgScreenIndex = (dbgScreenIndex - 2) % #SCREEN_ITEMS + 1
+            Sfx.uiHover()
+        elseif pd.buttonJustPressed(pd.kButtonDown) then
+            dbgScreenIndex = dbgScreenIndex % #SCREEN_ITEMS + 1
+            Sfx.uiHover()
+        elseif pd.buttonJustPressed(pd.kButtonB) then
+            Sfx.uiBack()
+            menuPage = "debug"
+        elseif pd.buttonJustPressed(pd.kButtonA) then
+            Sfx.uiConfirm()
+            jumpScreen(SCREEN_KIND[dbgScreenIndex])
+        end
+        return
+    end
+
+    if menuPage == "dbgmods" then
+        local n = #Mods.list + 1        -- the extra slot is START
+        local moved = 0
+        if pd.buttonJustPressed(pd.kButtonRight) then moved = 1
+        elseif pd.buttonJustPressed(pd.kButtonLeft) then moved = -1
+        elseif pd.buttonJustPressed(pd.kButtonDown) then moved = 2
+        elseif pd.buttonJustPressed(pd.kButtonUp) then moved = -2 end
+        if moved ~= 0 then
+            dbgCursor = (dbgCursor - 1 + moved) % n + 1
+            if dbgCursor <= #Mods.list then
+                dbgPage = math.floor((dbgCursor - 1) / 6) + 1
+            end
+            Sfx.uiHover()
+        elseif pd.buttonJustPressed(pd.kButtonB) then
+            Sfx.uiBack()
+            menuPage = "debug"
+        elseif pd.buttonJustPressed(pd.kButtonA) then
+            if dbgCursor > #Mods.list then
+                if #dbgSel == 3 then
+                    local forced = {}
+                    for i, sid in ipairs(dbgSel) do forced[i] = Mods.byId[sid] end
+                    Sfx.uiConfirm()
+                    menuImage = nil
+                    startGame(forced)   -- bgmStart resets the volume, no unduck needed
+                else
+                    Sfx.uiBack()
+                end
+            else
+                local id = Mods.list[dbgCursor].id
+                local at = nil
+                for i, v in ipairs(dbgSel) do if v == id then at = i end end
+                if at then
+                    table.remove(dbgSel, at)
+                    Sfx.uiBack()
+                elseif #dbgSel < 3 then
+                    dbgSel[#dbgSel + 1] = id
+                    Sfx.uiConfirm()
+                end
+            end
+        end
+        return
+    end
+
     if menuPage == "mods" then
         local pages = math.ceil(#Mods.list / 6)
         if pd.buttonJustPressed(pd.kButtonRight) or pd.buttonJustPressed(pd.kButtonDown) then
@@ -1018,6 +1386,10 @@ local function updateMenu(dt)
             Sfx.uiConfirm()
             menuPage = "mods"
             modsPage = 1
+        elseif pick == "Debug" then
+            Sfx.uiConfirm()
+            menuPage = "debug"
+            dbgMenuIndex = 1
         else
             Sfx.uiConfirm()
             menuImage = nil
@@ -1031,6 +1403,7 @@ function pd.update()
     local dt = t - lastTime
     lastTime = t
     if dt > 120 then dt = 120 end
+    local workT0 = t
 
     if state == STATE_TITLE then
         readCrank()
@@ -1089,4 +1462,11 @@ function pd.update()
     end
 
     pd.timer.updateTimers()
+    perfSample(dt, now() - workT0)
 end
+
+-- The probe lives on the system menu so it can be switched on with the device in
+-- hand, mid-run, without a rebuild.
+playdate.getSystemMenu():addCheckmarkMenuItem("perf", false, function(v)
+    perfOn = v
+end)

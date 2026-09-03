@@ -403,53 +403,77 @@ end
 -- haze. MASK is the falloff applied to the cards: its floor stays high, because
 -- a card dithered below about 70% loses its black text against the black room,
 -- and which modifiers are active is information the player cannot do without.
+-- Three passes down the same cone, because the beam, the door it falls on and
+-- the cards it has to keep legible all want different curves.
+--
+-- BEAM is light hanging in the air. DOOR falls away steeply with distance, so
+-- the vault reads as picked out of the dark rather than evenly floodlit. CARD
+-- keeps a high floor - a card dithered below roughly 70% loses its black text
+-- against the black room, and which modifiers are running is information the
+-- player cannot do without.
 local BEAM_BANDS <const> = {
-    { r = 350, a = 0.12 },
-    { r = 272, a = 0.20 },
-    { r = 198, a = 0.30 },
-    { r = 130, a = 0.42 },
+    { r = 330, a = 0.08 }, { r = 250, a = 0.14 },
+    { r = 172, a = 0.22 }, { r = 104, a = 0.32 },
 }
-local MASK_BANDS <const> = {
-    { r = 350, a = 0.80 },
-    { r = 255, a = 0.90 },
-    { r = 168, a = 0.97 },
-    { r = 96,  a = 1.00 },
+local DOOR_BANDS <const> = {
+    { r = 330, a = 0.10 }, { r = 250, a = 0.22 },
+    { r = 172, a = 0.38 }, { r = 104, a = 0.58 },
+}
+local CARD_BANDS <const> = {
+    { r = 330, a = 0.78 }, { r = 250, a = 0.88 },
+    { r = 172, a = 0.96 }, { r = 104, a = 1.00 },
 }
 
+-- A flashlight has a lens, not a pinhole. Sweeping from a single point made the
+-- beam vanishingly narrow at the source, which clipped the bottom card. This
+-- starts from a base segment BASE_HALF wide, so the near field is already wider
+-- than the card column and the throw itself can stay tight.
+local BASE_HALF <const> = 88
+local CONE_HALF <const> = 0.16
+
 local function wedge(fx, fy, r, half, steps)
-    local p = { fx, fy }
-    local a0 = -math.pi / 2 - half
+    local p = { fx - BASE_HALF, fy }
     for i = 0, steps do
-        local a = a0 + (2 * half) * i / steps
-        p[#p + 1] = fx + math.cos(a) * r
-        p[#p + 1] = fy + math.sin(a) * r
+        local t = i / steps
+        local a = -half + 2 * half * t
+        local ox = -BASE_HALF + 2 * BASE_HALF * t
+        p[#p + 1] = fx + ox + math.sin(a) * r
+        p[#p + 1] = fy - math.cos(a) * r
     end
+    p[#p + 1] = fx + BASE_HALF
+    p[#p + 1] = fy
     return p
 end
 
-local function cone(fx, fy, half, bands)
+local function cone(fx, fy, bands)
     for _, b in ipairs(bands) do
         -- setColor must be re-set inside the loop: setDitherPattern resets the
-        -- draw colour to black, so hoisting this out paints every band after the
+        -- draw colour to black, so hoisting it out paints every band after the
         -- first in black and eats the ones before it.
         gfx.setColor(gfx.kColorWhite)
         -- setDitherPattern's argument is TRANSPARENCY, not coverage: 0.1 is
         -- nearly solid, 0.9 nearly invisible. Verified on a swatch, because
         -- getting this backwards silently inverts the whole falloff.
         gfx.setDitherPattern(1 - b.a, gfx.image.kDitherTypeBayer4x4)
-        gfx.fillPolygon(table.unpack(wedge(fx, fy, b.r, half, 14)))
+        gfx.fillPolygon(table.unpack(wedge(fx, fy, b.r, CONE_HALF, 18)))
     end
     gfx.setColor(gfx.kColorWhite)
 end
 
--- The visible beam, drawn straight onto the dark room.
-function Art.drawLightBeam(fx, fy, half)
-    cone(fx, fy, half or 0.62, BEAM_BANDS)
-end
+-- All three are identical every run - only the cards beneath them change - so
+-- they are baked once per boot and reused.
+local beamImg, doorMaskImg, cardMaskImg = nil, nil, nil
 
--- The same cone as a stencil for whatever the beam falls on.
-function Art.drawLightMask(fx, fy, half)
-    cone(fx, fy, half or 0.62, MASK_BANDS)
+function Art.lightImages(fx, fy)
+    if not beamImg then
+        beamImg = gfx.image.new(400, 240)
+        gfx.pushContext(beamImg) cone(fx, fy, BEAM_BANDS) gfx.popContext()
+        doorMaskImg = gfx.image.new(400, 240, gfx.kColorBlack)
+        gfx.pushContext(doorMaskImg) cone(fx, fy, DOOR_BANDS) gfx.popContext()
+        cardMaskImg = gfx.image.new(400, 240, gfx.kColorBlack)
+        gfx.pushContext(cardMaskImg) cone(fx, fy, CARD_BANDS) gfx.popContext()
+    end
+    return beamImg, doorMaskImg, cardMaskImg
 end
 
 -- TOO LOUD's music note, baked once with the `// \\` emphasis strokes either
@@ -460,7 +484,6 @@ function Art.makeNoteBurst(icon)
     gfx.pushContext(img)
         gfx.setColor(gfx.kColorBlack)
         gfx.setLineWidth(2)
-        -- // on the left, \\ on the right
         gfx.drawLine(3, 14, 8, 4)
         gfx.drawLine(8, 14, 13, 4)
         gfx.drawLine(w - 3, 14, w - 8, 4)
@@ -479,17 +502,19 @@ end
 -- sound happened, not that it was footsteps, and carries none of the three-second
 -- deadline that actually decides the run.
 function Art.makeMarks(scale)
-    local w, h <const> = 40, 26
+    local w, h <const> = 46, 26
     local src = gfx.image.new(w, h)
     gfx.pushContext(src)
         -- black first and fat, white over it thin: the same read as outlinedText
         for _, pass in ipairs({ { gfx.kColorBlack, 7 }, { gfx.kColorWhite, 3 } }) do
             gfx.setColor(pass[1])
             gfx.setLineWidth(pass[2])
-            gfx.drawLine(6, 20, 12, 6)
-            gfx.drawLine(13, 20, 19, 6)
-            gfx.drawLine(w - 6, 20, w - 12, 6)
-            gfx.drawLine(w - 13, 20, w - 19, 6)
+            -- `// \\` - the pairs need real air between them or they read as one
+            -- four-stroke smear at this size
+            gfx.drawLine(5, 20, 11, 6)
+            gfx.drawLine(12, 20, 18, 6)
+            gfx.drawLine(w - 5, 20, w - 11, 6)
+            gfx.drawLine(w - 12, 20, w - 18, 6)
         end
         gfx.setLineWidth(1)
     gfx.popContext()
@@ -509,27 +534,45 @@ end
 -- a number. Dithered so the dial and cards stay legible underneath.
 --
 -- `angle` is radians of surface tilt, `danger` 0..1 how close to spilling.
-function Art.drawWaterLayer(angle, danger)
-    -- Sits low enough to leave the modifier cards and the Ⓐ/Ⓑ prompts readable.
-    -- It is a hazard overlay, not a curtain: covering the card column would hide
-    -- which modifiers are running.
-    local cx, cy <const> = 200, 210
-    local dx = math.cos(angle) * 300
-    local dy = math.sin(angle) * 300
-    -- the surface, extended past both edges, closed off the bottom of the screen
-    local poly = {
-        cx - dx, cy - dy,
-        cx + dx, cy + dy,
-        cx + dx, 260,
-        cx - dx, 260,
-    }
+-- The surface is sampled across the screen rather than drawn as one straight
+-- line: a tilted line reads as a wiper blade, not a liquid. Two sine waves of
+-- different wavelength travelling at different speeds give the irregular,
+-- non-repeating crest that makes it read as water, and their amplitude is driven
+-- by how hard the surface is currently moving - still when level, choppy when
+-- you swing it.
+--
+-- `angle` radians of tilt, `danger` 0..1, `amp` current slosh height, `phase`
+-- the travelling wave's position.
+-- The surface is a one-dimensional height field, not a curve drawn from a
+-- formula. Each column is a mass on a spring pulled toward the tilted plane, and
+-- every frame each column shoves its neighbours - which is what makes a
+-- disturbance travel, pile up against an end and come back. Summed sine waves
+-- cannot do that: they always look like a moving graph, never like liquid.
+--
+-- `heights` are per-column offsets from the plane, supplied by the caller's sim.
+function Art.drawWater(cy, slope, heights, danger)
+    local n = #heights
+    local step = 400 / (n - 1)
+    local poly = {}
+    for i = 1, n do
+        local x = (i - 1) * step
+        poly[#poly + 1] = x
+        poly[#poly + 1] = cy + (x - 200) * slope + heights[i]
+    end
+    poly[#poly + 1] = 400
+    poly[#poly + 1] = 264
+    poly[#poly + 1] = 0
+    poly[#poly + 1] = 264
+
     gfx.setColor(gfx.kColorBlack)
-    -- transparency, so higher is sparser; it thickens as you near spilling
     gfx.setDitherPattern(danger > 0.75 and 0.52 or 0.72, gfx.image.kDitherTypeBayer4x4)
     gfx.fillPolygon(table.unpack(poly))
-    -- the waterline itself stays solid, so the horizon is always readable
+
+    -- the crest stays solid, so the waterline reads over whatever is beneath it
     gfx.setColor(gfx.kColorBlack)
     gfx.setLineWidth(danger > 0.75 and 3 or 2)
-    gfx.drawLine(cx - dx, cy - dy, cx + dx, cy + dy)
+    for i = 1, (n - 1) * 2, 2 do
+        gfx.drawLine(poly[i], poly[i + 1], poly[i + 2], poly[i + 3])
+    end
     gfx.setLineWidth(1)
 end

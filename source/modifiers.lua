@@ -53,9 +53,6 @@ Mods.iconFrames = {
 Mods.list = {
     { id = "blackout",      name = "BLACKOUT",      sub = "The dial is not drawn",     axis = "perception", tags = { "channel" }, icon = "eye-off" },
     { id = "too-loud",      name = "TOO LOUD",      sub = "Ticks buried in noise",    axis = "perception", tags = { "channel" }, icon = "music-note" },
-    { id = "hair-trigger",  name = "HAIR TRIGGER",  sub = "Only a crawl will latch",  axis = "motor",      tags = {},            icon = "crosshair" },
-    { id = "greased",       name = "GREASED",       sub = "It coasts after you stop",     axis = "motor",      tags = {},            icon = "oil-slip" },
-    { id = "sticky",        name = "STICKY",        sub = "Shove it to get moving",     axis = "motor",      tags = {},            icon = "goo-drip" },
     { id = "scrambled",     name = "SCRAMBLED",     sub = "Each turn goes either way",     axis = "memory",     tags = {},            icon = "both-ways" },
     { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Four spots, not three",   axis = "memory",     tags = { "time" },    icon = "four-pins" },
     -- DRIFT MUST STAY WELL UNDER MAX_ENGAGE_SPEED (25 units/sec, main.lua). A spot
@@ -124,7 +121,6 @@ Mods.BANNED = "banned"
 -- The run is impossible.
 local banned = pairs_(Mods.BANNED, {
     { "blackout", "too-loud" },
-    { "hair-trigger", "sticky" },
     { "too-loud", "guard" },
     { "blackout", "nitro" },
 })
@@ -141,12 +137,7 @@ local hard1 = {
     { "blackout", "decoy" },
     { "too-loud", "decoy" },
     { "too-loud", "scrambled" },
-    { "too-loud", "hair-trigger" },
     { "blackout", "wandering" },
-    { "hair-trigger", "greased" },
-    { "sticky", "greased" },
-    { "nitro", "greased" },
-    { "nitro", "sticky" },
     { "scrambled", "wandering" },
     { "four-tumblers", "wandering" },
     { "four-tumblers", "guard" },
@@ -213,7 +204,7 @@ function Mods.buildCfg(mods)
         -- TOO LOUD and GUARD are a banned pair, so these can never both apply.
         bgmTrack = "sounds/bgm", bgmVol = 0.12, mechVol = 1.0,
         -- motor
-        maxEngage = 25, friction = nil, stiction = 0,
+        maxEngage = 25,
         -- the puzzle
         tumblers = 3, randomDirs = false, drift = 0, decoy = false,
         -- run-ending conditions
@@ -224,14 +215,9 @@ function Mods.buildCfg(mods)
 
     if has["blackout"] then c.drawDial, c.showEffects, c.shake = false, false, false end
     if has["too-loud"] then c.bgmTrack, c.bgmVol, c.mechVol = "sounds/nightclub", 0.50, 0.18 end
-    if has["guard"] then c.bgmTrack, c.bgmVol, c.guard = "sounds/ambience", 0.45, true end
-    -- 7.5 units/sec is the old 0.15 per frame at 50 fps, versus a normal 25.
-    if has["hair-trigger"] then c.maxEngage = 7.5 end
-    if has["greased"] then c.friction = 0.90 end
-    -- Below this the dial will not move at all; the held input releases in one
-    -- shove. Must stay under maxEngage or the pair is unwinnable - which is why
-    -- HAIR TRIGGER + STICKY is banned rather than merely hard.
-    if has["sticky"] then c.stiction = 14 end
+    -- The room sits well back so the steps can cut through it: missing a footstep
+    -- is a hard game over, so it must be the loudest thing in a GUARD run.
+    if has["guard"] then c.bgmTrack, c.bgmVol, c.guard = "sounds/ambience", 0.26, true end
     if has["scrambled"] then c.randomDirs = true end
     if has["four-tumblers"] then c.tumblers = 4 end
     if has["wandering"] then c.drift = Mods.MAX_DRIFT end
