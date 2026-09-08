@@ -1,0 +1,58 @@
+# Modifier concept mockups
+
+Generated with the built-in image-generation tool from a current Safu gameplay screenshot. These are annotated visual concepts, not implemented modifiers or final layout specifications.
+
+Selected mockups:
+
+- `modifier-concept-crossed-wires-v2.png`
+- `modifier-concept-fuse-box.png`
+- `modifier-concept-gear-mesh-v2.png`
+- `modifier-concept-misaligned.png`
+
+The unversioned crossed-wires and gear-mesh images are the first drafts; use the v2 images above.
+
+## crossed_final
+
+Create an annotated CROSSED WIRES modifier concept from this actual Safu screenshot. Output a landscape before/after board: large title CROSSED WIRES, label CONCEPT ONLY, two copies of the actual screenshot side by side, BEFORE and AFTER. Preserve the vault frame, clock, main dial, right modifier cards. Change first card to CROSSED WIRES. Put a speech-bubble puzzle with black outline and checkered shadow over lower dial in each screenshot; hide OPEN? while puzzle shown. Keep B MENU and right cards visible.
+The puzzle must be a VERY SIMPLE, CORRECT wiring diagram with exactly three top points A B C and bottom sockets 1 2 3. Exactly ONE path from each point: A goes to3; B goes to1; C goes to2. Do not draw Y shapes or shared path segments. To prevent ambiguous crossings, make the ENTIRE A-to-3 path bright ORANGE as an explanatory marker drawn on the screenshot. A starts at upper-left and the orange line goes diagonally all the way down to socket3 at bottom-right; it touches neither2 nor1. B-to-1 and C-to-2 are thin black independent diagonal lines with small white gaps where orange crosses them. This orange ink is an outside annotation, not a proposed game color. Copy identical paths into both panels.
+BEFORE bottom socket2 is selected. AFTER bottom socket3 is selected and ticked. Circle the starting A in orange. Add large plain caption: 'Follow A to socket 3.' Bottom instruction: 'RIGHT selects 3. DOWN confirms.' Footer: 'A wrong choice lets you retry the same puzzle.' Small note: 'Orange shows the route for this example; the game stays black and white.' No other callout arrows, no ambiguous pointer paths, no extra endpoints, no text covering the wire. Keep images crisp pixel-art and annotations legible. The clear orange A-to-3 line is the essential element.
+
+## gear_final
+
+Create a simple annotated GEAR MESH modifier concept from this actual Safu screenshot. Output a landscape before/after board: large title GEAR MESH, CONCEPT ONLY label, two copies of the source screenshot side by side BEFORE/AFTER. Preserve the main crank dial perfectly unchanged with NO NOTCH CUT INTO IT. Preserve vault frame, clock, right modifier cards. Change first card to GEAR MESH.
+Over the lower half of the main dial, draw a speech bubble with checkered offset shadow. INSIDE THE BUBBLE draw a SEPARATE MINIATURE GEAR PUZZLE. The MAIN DIAL ABOVE IT MUST REMAIN UNCHANGED. The miniature gear puzzle consists of a black circular ring with small outer teeth and exactly one white empty U-shaped notch cut into its rim, and a fixed small rectangular catch sitting just above that miniature ring.
+BEFORE: miniature ring's EMPTY NOTCH is at its UPPER RIGHT, miniature catch is directly ABOVE the ring at12o'clock, separated from rim by visible white space. A small clockwise arrow beside this MINIATURE ring shows it turns automatically. No orange external pointers (avoid wrong leader endpoints).
+AFTER: same miniature ring rotated so the empty notch is now at the TOP; the catch above it has dropped DOWN INTO the notch. The miniature gear is stationary, so no motion arrow AFTER. Label K-CHIK! inside bubble after.
+Keep B MENU visible below the bubble, hide Down OPEN? while bubble present.
+Explanatory text outside the game, exact: 'The small gear turns by itself.' and 'When its gap reaches the catch at the top, press DOWN.' Bottom footer: 'Missed? Wait for the next turn. Earlier clicks stay safe.' Use a big D-pad down glyph beside DOWN. Clean, restrained monochrome pixel game UI, neutral background, orange accent only for BEFORE/AFTER labels. This is a teaching mockup: the notch and catch INSIDE the bubble must visibly meet in AFTER; do NOT alter or annotate the large source crank dial.
+
+### Final caption edit: crossed_caption_final
+
+Text-only edit. In BOTH screenshots on this CROSSED WIRES board, replace the incorrect two-line description under the CROSSED WIRES modifier title. It currently says 'Hold the dial still. / Enter the arrows.' Replace exactly with 'Trace the marked wire.' on first line and 'Choose its socket.' on second line, matching the existing small pixel font. Preserve EVERYTHING ELSE exactly: orange A-to-3 route, all wires/labels, before/after, bottom instructions, all layout and art. Do not redraw diagrams, do not change other cards. Only these two duplicate card descriptions change.
+
+### Final caption edit: gear_caption_final
+
+Text-only edit. In BOTH screenshots on this GEAR MESH board, replace the incorrect two-line description under GEAR MESH. It currently says 'Hold the dial still. / Enter the arrows.' Replace exactly with 'Wait for the gap.' on first line and 'Press Down to catch it.' on second line, matching the existing small pixel font. Preserve EVERYTHING ELSE exactly: all gears, main dial, before/after, bottom instructions, all layout and art. Do not redraw diagrams, do not change other cards. Only these two duplicate card descriptions change.
+
+## fuse_box
+
+Use case: compositing / ui-mockup. Make a clear concept explainer by EDITING the supplied real Safu gameplay screenshot, a 400x240 monochrome Playdate game. It is the edit target, not a loose mood reference. Create ONE landscape board containing TWO enlarged faithful copies of that screenshot side by side, BEFORE on left and AFTER on right, with a few concise explanatory callouts outside the game screens. This is an annotated proposal, not production UI. Put a large concept name at top, a small 'CONCEPT — NOT IMPLEMENTED' label, and one clear player-action strip below the two screenshots. Maintain the exact 5:3 screen aspect, vault-door border, timer top-left, crank dial left, and three notched modifier plates on the right. Use crisp, chunky monochrome pixel art inside screens. Keep the source screenshot's layout, framing, dial styling and existing typography as faithfully as possible. For the FIRST card replace KEYPAD with this concept's name and its supplied subtitle; other two cards stay WANDERING and FOUR TUMBLERS. Draw the proposed mini-puzzle as a WHITE SPEECH BUBBLE over the LOWER HALF OF THE DIAL (rough source coords x28,y108,width186,height90), upward speech tail points to the dial hub, bold black outline and a checkered shadow offset down/right matching the modifier cards. Keep timer, upper half of dial, right cards and B MENU visible. While the puzzle is present hide the existing Down OPEN? prompt so no controls overlap. Do not add any A-button instructions. All puzzle controls use left-hand D-pad. Outside the screenshots use restrained orange arrows/circles for annotation on a light neutral background, large legible clean text, generous margins, no device photography, no new characters, no extra screens. The goal is to make the mechanic immediately understandable through an exact concrete before/after example, not decorative concept art.
+Concept title 'FUSE BOX'. Subtitle: 'One switch can change two lights.'
+First card subtitle 'Power all three lights.\nSwitches are linked.'
+Bubble: heading 'POWER ALL 3'. Three clearly separated indicator lamps labelled 1,2,3 along top; below them three small mechanical switches labelled 1,2,3. A switch flips its own light and the next light (switch 3 wraps to light 1). Visually mark the two lamps affected by currently selected switch 2 with clear branching connection lines from switch 2 to lamps 2 and 3. Switch 2 is selected with thick rectangular border. Do not make three independent switches: the two-light connection is the whole concept.
+BEFORE: lamp 1 ON (black lamp with radiating white center / clearly lit with rays), lamps 2 and 3 OFF (hollow lamps without rays). Add tiny ON/OFF labels if needed for perfect clarity in monochrome.
+AFTER: same switch 2 selected and flipped, lamps 1,2,3 all unmistakably ON with small radiating rays. Small 'K-CHIK!' confirmation.
+External callout: 'Switch 2 flips lights 2 AND 3.' Action strip: 'LEFT / RIGHT chooses a switch. DOWN flips it.' Supporting line: 'Here, press DOWN on switch 2 to light all three.' Footer: 'Every move is reversible. Keep trying until all lights are on.'
+
+## misaligned
+
+Use case: compositing / ui-mockup. Make a clear concept explainer by EDITING the supplied real Safu gameplay screenshot, a 400x240 monochrome Playdate game. It is the edit target, not a loose mood reference. Create ONE landscape board containing TWO enlarged faithful copies of that screenshot side by side, BEFORE on left and AFTER on right, with a few concise explanatory callouts outside the game screens. This is an annotated proposal, not production UI. Put a large concept name at top, a small 'CONCEPT — NOT IMPLEMENTED' label, and one clear player-action strip below the two screenshots. Maintain the exact 5:3 screen aspect, vault-door border, timer top-left, crank dial left, and three notched modifier plates on the right. Use crisp, chunky monochrome pixel art inside screens. Keep the source screenshot's layout, framing, dial styling and existing typography as faithfully as possible. For the FIRST card replace KEYPAD with this concept's name and its supplied subtitle; other two cards stay WANDERING and FOUR TUMBLERS. Draw the proposed mini-puzzle as a WHITE SPEECH BUBBLE over the LOWER HALF OF THE DIAL (rough source coords x28,y108,width186,height90), upward speech tail points to the dial hub, bold black outline and a checkered shadow offset down/right matching the modifier cards. Keep timer, upper half of dial, right cards and B MENU visible. While the puzzle is present hide the existing Down OPEN? prompt so no controls overlap. Do not add any A-button instructions. All puzzle controls use left-hand D-pad. Outside the screenshots use restrained orange arrows/circles for annotation on a light neutral background, large legible clean text, generous margins, no device photography, no new characters, no extra screens. The goal is to make the mechanic immediately understandable through an exact concrete before/after example, not decorative concept art.
+Concept title 'MISALIGNED'. Subtitle: 'Line up three sliding pins.'
+First card subtitle 'Move each pin.\nLine up all three.'
+Bubble: heading 'ALIGN THE PINS'. Three vertical rails labelled 1 2 3, each with a clearly visible movable square pin-head that has exactly three possible heights: HIGH, CENTER, LOW. Draw a horizontal dotted target line through the CENTER position, across all rails. A bold selection border indicates selected rail 2. Tiny up/down arrows beside the selected pin indicate legal movement. No timing gauge or countdown specific to this puzzle.
+BEFORE: pin 1 HIGH (above dotted line); pin 2 LOW (below dotted line); pin 3 CENTER (already on dotted line). Their offsets must be obvious.
+AFTER: all three square pin heads exactly on the same horizontal dotted target line. Small 'K-CHIK!' confirmation. Same rails/labels and physical positions as BEFORE.
+External annotations: 'Pin 1: move DOWN', 'Pin 2: move UP', 'Pin 3: already aligned', pointing to the appropriate BEFORE pins without obscuring the game.
+Action strip: 'LEFT / RIGHT selects a pin. UP / DOWN moves it.' Footer: 'All three on the dotted line = one real click. Adjust freely until they match.'
+
+

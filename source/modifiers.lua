@@ -1,4 +1,4 @@
--- Safu modifier catalogue — the 9 modifiers of game.md §12, their icons, and the
+-- Safu modifier catalogue — the 10 modifiers of game.md §12, their icons, and the
 -- combination rules that decide which triples are legal.
 --
 -- Data, art, the legality rules, and Mods.buildCfg — which turns a rolled set into
@@ -54,16 +54,17 @@ Mods.list = {
     { id = "blackout",      name = "BLACKOUT",      sub = "It is too dark to see.\nListen for loud clicks.", axis = "perception", tags = { "channel" }, icon = "eye-off" },
     { id = "too-loud",      name = "TOO LOUD",      sub = "The clicks are silent.\nWatch for dial shakes.", axis = "perception", tags = { "channel" }, icon = "music-note" },
     { id = "scrambled",     name = "SCRAMBLED",     sub = "Try both directions\nfor each sweet spot.", axis = "memory",     tags = {},            icon = "both-ways" },
-    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Find 4 sweet spots\nbefore pressing A.", axis = "memory",     tags = { "time" },    icon = "four-pins" },
+    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Find 4 sweet spots\nthen press Down.", axis = "memory",     tags = { "time" },    icon = "four-pins" },
     -- DRIFT MUST STAY WELL UNDER MAX_ENGAGE_SPEED (25 units/sec, main.lua). A spot
     -- that drifts at or above the speed you are allowed to latch at is literally
     -- uncatchable: closing on it fast enough to keep up is itself a graze.
     -- Mods.MAX_DRIFT is the ceiling the effect must honour.
     { id = "wandering",     name = "WANDERING",     sub = "Sweet spots move\nwhen you stop turning.", axis = "memory",     tags = {},            icon = "drift-target" },
     { id = "decoy",         name = "DECOY",         sub = "Fake clicks end in a\nbuzz, with no shake.", axis = "risk",       tags = {},            icon = "twin-marks" },
-    { id = "one-shot",      name = "ONE SHOT",      sub = "Press A too soon\nand you lose.", axis = "risk",       tags = { "fail" },    icon = "skull" },
+    { id = "one-shot",      name = "ONE SHOT",      sub = "Press Down too soon\nand you lose.", axis = "risk",       tags = { "fail" },    icon = "skull" },
     { id = "guard",         name = "GUARD",         sub = "When you hear steps,\nstop for 3 seconds.", axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
     { id = "nitro",         name = "NITRO",         sub = "Tilt to keep the\nliquid from spilling.", axis = "body",       tags = { "fail" },    icon = "flask" },
+    { id = "keypad",        name = "KEYPAD",        sub = "Hold the dial still.\nEnter the arrows.", axis = "input",       tags = {},            icon = "keypad" },
 }
 
 Mods.byId = {}
@@ -80,6 +81,21 @@ end
 
 -- One icon as an image, by icon id ("crosshair") — from the imagetable.
 function Mods.iconImage(iconId)
+    if iconId == "keypad" then
+        if not singles.keypad then
+            local image = gfx.image.new(14, 14)
+            gfx.pushContext(image)
+                gfx.setColor(gfx.kColorBlack)
+                gfx.setLineWidth(1)
+                gfx.drawRect(0, 1, 14, 12)
+                for row = 0, 1 do
+                    for column = 0, 2 do gfx.fillRect(3 + column * 3, 4 + row * 4, 2, 2) end
+                end
+            gfx.popContext()
+            singles.keypad = image
+        end
+        return singles.keypad
+    end
     local frame = Mods.iconFrames[iconId]
     if not frame then return nil end
     return Mods.icons():getImage(frame)
@@ -118,11 +134,14 @@ end
 
 Mods.BANNED = "banned"
 
--- The run is impossible.
+-- Impossible, overloaded, or one modifier gives away the other's whole trick.
 local banned = pairs_(Mods.BANNED, {
     { "blackout", "too-loud" },
     { "too-loud", "guard" },
     { "blackout", "nitro" },
+    { "keypad", "blackout" },
+    { "keypad", "nitro" },
+    { "keypad", "decoy" },
 })
 
 -- Weight 2: two ways to lose instantly in one run.
@@ -208,7 +227,7 @@ function Mods.buildCfg(mods)
         -- motor
         maxEngage = 25,
         -- the puzzle
-        tumblers = 3, randomDirs = false, drift = 0, decoy = false,
+        tumblers = 3, randomDirs = false, drift = 0, decoy = false, keypad = false,
         -- run-ending conditions
         oneShot = false, guard = false, nitro = false,
     }
@@ -226,6 +245,7 @@ function Mods.buildCfg(mods)
     if has["decoy"] then c.decoy = true end
     if has["one-shot"] then c.oneShot = true end
     if has["nitro"] then c.nitro = true end
+    if has["keypad"] then c.keypad = true end
     return c
 end
 

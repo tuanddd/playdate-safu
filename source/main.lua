@@ -5,6 +5,8 @@ import "dial"
 import "modifiers"
 import "tutorial"
 import "spots"
+import "keypad"
+import "keypad-ui"
 
 local gfx <const> = playdate.graphics
 local pd <const> = playdate
@@ -165,7 +167,7 @@ local dbgScreenIndex = 1
 -- table: main.lua sits close to Lua's 200-local ceiling for a main chunk, and
 -- spelling this page out as a dozen file locals blows straight through it.
 --
--- `index` is the selected row, `top` the first visible one - 20 entries do not
+-- `index` is the selected row, `top` the first visible one - 21 entries do not
 -- fit on a 240px screen, so the list scrolls to keep the cursor in view.
 --
 -- Levels live in Sfx.mix already in dB on the 0..20 scale (0 dB is silence,
@@ -283,6 +285,7 @@ local function spawnTarget()
     target = Spots.pick(dialPos, decoyTarget)
     armed = true
     wrongTold = false
+    if Run.cfg.keypad then Keypad.newSpot() else Keypad.cancel() end
 end
 
 local function addEffect(set, x, y, life)
@@ -335,6 +338,8 @@ local function startGame(forced, untimed)
     Run.untimed = untimed and true or false
     tutorialStep = nil
     Tutorial.reset()
+    Keypad.reset()
+    KeypadUI.reset()
     Run.cfg = Mods.buildCfg(Run.mods)
     Run.dirs = Mods.rollDirs(Run.cfg.tumblers, Run.cfg.randomDirs)
     -- Place the fixed decoy first; each real spot can then avoid it. Unlike
@@ -455,6 +460,7 @@ local function updateTitleDial(dt)
 end
 
 local function resetProgress(set)
+    Keypad.cancel()
     Tutorial.feedback(tutorialStep, "reset")
     if tumbler > 1 then
         tumbler = 1
@@ -472,6 +478,7 @@ end
 -- footsteps, NITRO's spill. Same slide-down ending as a time-out, different word.
 local function loseRun(reason)
     if state ~= STATE_PLAY then return end
+    Keypad.cancel()
     loseReason = reason
     state = STATE_LOSE
     losePhase = 1
@@ -485,6 +492,7 @@ local function loseRun(reason)
 end
 
 local function openSafe()
+    Keypad.cancel()
     pd.stopAccelerometer()
     Sfx.bgmStop()
     Sfx.handle()
@@ -541,6 +549,26 @@ local function checkDecoy(delta, speed)
     addEffect(sfxImages.kchik, x, y, 680)
 end
 
+-- The normal latch feedback happens only after the whole keypad code succeeds.
+local function latchTarget()
+    armed = false
+    local diff = ((target - dialPos + 50) % 100) - 50
+    posOffset = posOffset + diff
+    dialPos = (rawPos + posOffset) % 100
+    lastDetent = math.floor(dialPos / TICK_STEP)
+    if Run.cfg.shake then shakeStart = now() end
+    tumbler = tumbler + 1
+    Tutorial.feedback(tutorialStep, nil)
+    Sfx.sweetSpot()
+    local x, y = placeAround(sfxImages.kchik, 32)
+    addEffect(sfxImages.kchik, x, y, 680)
+    if tumbler <= Run.cfg.tumblers then
+        spawnTarget()
+    else
+        target = nil
+    end
+end
+
 local function checkTumbler(delta)
     local cfg = Run.cfg
     local speed = unitsPerSec(delta)
@@ -549,6 +577,14 @@ local function checkTumbler(delta)
         return
     end
     if tumbler > cfg.tumblers then return end
+    if Keypad.active then
+        if wrapDist(dialPos, target) > Keypad.HOLD_TOL then
+            Keypad.cancel()
+            armed = true
+            wrongTold = false
+        end
+        return
+    end
     checkDecoy(delta, speed)
 
     local need = Run.dirs[tumbler]
@@ -586,23 +622,65 @@ local function checkTumbler(delta)
         return
     end
 
-    armed = false
-    local diff = ((target - dialPos + 50) % 100) - 50
-    posOffset = posOffset + diff
-    dialPos = (rawPos + posOffset) % 100
-    lastDetent = math.floor(dialPos / TICK_STEP)
-    if cfg.shake then shakeStart = now() end
-
-    tumbler = tumbler + 1
-    Tutorial.feedback(tutorialStep, nil)
-    Sfx.sweetSpot()
-    local x, y = placeAround(sfxImages.kchik, 32)
-    addEffect(sfxImages.kchik, x, y, 680)
-    if tumbler <= cfg.tumblers then
-        spawnTarget()
+    if cfg.keypad then
+        -- Center the hold zone on entry, as the ordinary latch centers the dial.
+        -- The crank remains live; only completing the arrows earns the click.
+        local diff = ((target - dialPos + 50) % 100) - 50
+        posOffset = posOffset + diff
+        dialPos = (rawPos + posOffset) % 100
+        lastDetent = math.floor(dialPos / TICK_STEP)
+        armed = false
+        Keypad.begin()
+        Sfx.uiHover()
     else
-        target = nil
+        latchTarget()
     end
+end
+
+Keypad.buttons = {
+    { pd.kButtonUp, "up" }, { pd.kButtonDown, "down" },
+    { pd.kButtonLeft, "left" }, { pd.kButtonRight, "right" },
+}
+
+-- Called after this frame's crank movement and zone check. All directional
+-- input belongs to a bubble that existed at either end of this frame.
+function Keypad.updateInput(wasKeypad)
+    if not Run.cfg.keypad then
+        if pd.buttonJustPressed(pd.kButtonDown) then tryHandle() end
+        return
+    end
+    local held, pressed, direction = 0, 0, nil
+    for _, button in ipairs(Keypad.buttons) do
+        if pd.buttonIsPressed(button[1]) then held = held + 1 end
+        if pd.buttonJustPressed(button[1]) then
+            pressed = pressed + 1
+            direction = button[2]
+        end
+    end
+    if wasKeypad or Keypad.active then
+        if not Keypad.active then return end
+        if Keypad.waitForRelease then
+            if held == 0 then Keypad.waitForRelease = false end
+            return
+        end
+        if pressed == 0 then return end
+        local result = Keypad.press(pressed == 1 and held == 1 and direction or "invalid")
+        if result == "wrong" then
+            Sfx.keypadError()
+            -- A diagonal is one bad input, never two ordered guesses.
+            if held > 1 then Keypad.waitForRelease = true end
+        elseif result == "complete" then
+            latchTarget()
+        elseif result == "step" then
+            Sfx.uiHover()
+        end
+        return
+    end
+    if Keypad.blockOpen then
+        if held == 0 then Keypad.blockOpen = false end
+        return
+    end
+    if pd.buttonJustPressed(pd.kButtonDown) then tryHandle() end
 end
 
 local function formatTime(ms)
@@ -614,7 +692,7 @@ local function formatTime(ms)
     return string.format("%02d:%02d.%02d", m, s, c)
 end
 
--- Every Ⓐ/Ⓑ prompt in the game: a 14x14 button glyph and a 13px label, the pair
+-- Button prompts: use the supplied glyph's dimensions and a 13px label, the pair
 -- centred on cx and on each other. `y` is the top of the glyph.
 local ICON <const> = 14
 local ICON_GAP <const> = 5
@@ -624,10 +702,11 @@ local function drawIconLabel(icon, text, cx, y, white)
     local tw = gfx.getTextSize(text)
     -- measure before switching draw mode; inkBand needs to draw black on white
     local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
-    local x = math.floor(cx - (ICON + ICON_GAP + tw) / 2)
+    local iw, ih = icon:getSize()
+    local x = math.floor(cx - (iw + ICON_GAP + tw) / 2)
     if white then gfx.setImageDrawMode(gfx.kDrawModeFillWhite) end
     icon:draw(x, y)
-    gfx.drawText(text, x + ICON + ICON_GAP, y + math.floor((ICON - inkH) / 2) - inkTop)
+    gfx.drawText(text, x + iw + ICON_GAP, y + math.floor((ih - inkH) / 2) - inkTop)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
@@ -663,7 +742,9 @@ local function drawHud()
     -- losing this under BLACKOUT costs the player nothing.
     local tx = 0
     if Run.cfg and Run.cfg.oneShot then tx = math.sin(now() / 26) * 1.6 end
-    drawIconLabel(Art.iconA, "OPEN?", PLAY_CX + tx, 186, false)
+    if not Keypad.active then
+        drawIconLabel(KeypadUI.iconDown, "OPEN?", PLAY_CX + tx, 186, false)
+    end
     drawIconLabel(Art.iconB, "MENU", PLAY_CX, 204, false)
     drawPerf()
 end
@@ -862,6 +943,10 @@ local function drawLitScene()
     if tutorialStep == 1 then
         Tutorial.draw(tutorialStep, tumbler, CARD_X, CARD_Y, CARD_W, CARD_H, CARD_GAP)
     end
+    if Keypad.active then
+        KeypadUI.draw(Keypad.sequence, Keypad.progress, Keypad.failed,
+            (((dialPos - target + 50) % 100) - 50) / Keypad.HOLD_TOL)
+    end
     drawNitro()   -- last: the spirit level sits over everything
 end
 
@@ -906,7 +991,7 @@ local function drawScene()
         blackoutBg:draw(0, 0)
         Art.drawTimerText(timerTX, timerTY, timerText())
         drawPerf()
-        -- no dial, no shake, no SFX text, and no Ⓐ prompt: the run is played by ear
+        -- no dial, no shake, no SFX text, and no Down prompt: the run is played by ear
         return
     end
 
@@ -918,7 +1003,7 @@ end
 -- spot moves; it reflects before getting too close to the fixed decoy.
 local function driftTargets(dt, speed)
     local cfg = Run.cfg
-    if cfg.drift <= 0 or speed >= DEAD_SPEED or not target or tumbler > cfg.tumblers then return end
+    if cfg.drift <= 0 or speed >= DEAD_SPEED or not target or tumbler > cfg.tumblers or Keypad.active then return end
     target, driftSign = Spots.drift(target, decoyTarget, cfg.drift * dt / 1000, driftSign)
 end
 
@@ -1058,14 +1143,19 @@ local function updatePlay(dt)
     doTicks(delta)
     if state == STATE_PLAY then
         local speed = unitsPerSec(delta)
+        local wasKeypad = Keypad.active
         checkTumbler(delta)
         driftTargets(dt, speed)
         updateGuard(speed)
         updateNitro()
         updateSlosh()
+        if state == STATE_PLAY and (remaining > 0 or Run.untimed) then
+            Keypad.updateInput(wasKeypad)
+        end
     end
     updateNotes()
     if remaining <= 0 and state == STATE_PLAY then
+        Keypad.cancel()
         remaining = 0
         loseReason = "timeup"
         state = STATE_LOSE
@@ -1890,7 +1980,6 @@ function pd.update()
             openMenu()
             drawMenu()
         else
-            if pd.buttonJustPressed(pd.kButtonA) and not pd.isCrankDocked() then tryHandle() end
             local docked = pd.isCrankDocked()
             updatePlay(dt)
             if state == STATE_PLAY then

@@ -57,6 +57,7 @@ env.Tutorial = {
     reset = function() end,
     feedback = function(_, kind) events.feedback = kind end,
 }
+env.KeypadUI = { reset = function() end }
 env.sfxImages = { reset = {}, kchik = {}, kchunk = {}, locked = {}, toofast = {}, caught = {}, boom = {} }
 env.placeAround = function() return 100, 100 end
 env.addEffect = function() end
@@ -69,8 +70,9 @@ for _, name in ipairs({ "TOL", "RESET_SPEED", "DEAD_SPEED", "TICK_STEP", "GAME_M
     env[name] = loadInto("return " .. expression, "constant " .. name, env)
 end
 loadInto(read("source/spots.lua"), "source/spots.lua", env)
+loadInto(read("source/keypad.lua"), "source/keypad.lua", env)
 loadInto(read("source/modifiers.lua"), "source/modifiers.lua", env)
-for _, name in ipairs({ "now", "wrapDist", "spawnTarget", "startGame", "unitsPerSec", "resetProgress", "loseRun", "openSafe", "tryHandle", "checkDecoy", "checkTumbler", "driftTargets" }) do
+for _, name in ipairs({ "now", "wrapDist", "spawnTarget", "startGame", "unitsPerSec", "resetProgress", "loseRun", "openSafe", "tryHandle", "checkDecoy", "latchTarget", "checkTumbler", "driftTargets" }) do
     loadInto(extract(name), "main.lua:" .. name, env)
 end
 loadInto(extract("Run.has", true), "main.lua:Run.has", env)
@@ -253,7 +255,7 @@ test("completion stops both spots; overspeed still resets completed progress", f
     end
 end)
 
-test("ONE SHOT loses on early A and opens on completed A", function()
+test("ONE SHOT loses on an early handle pull and opens when complete", function()
     for _, count in ipairs({ 3, 4 }) do
         for progress = 0, count do
             start(count, true, { "one-shot" })
@@ -322,3 +324,23 @@ test("WANDERING freezes during turning and cannot latch while stationary", funct
 end)
 
 print(string.format("PASS %d groups, %d invariant checks", groups, checks))
+
+-- The keypad suite reuses these real-source transitions, then also loads the
+-- actual frame dispatcher to check simultaneous crank/button event ordering.
+return {
+    env = env,
+    start = start,
+    at = at,
+    latch = latch,
+    check = check,
+    test = test,
+    distance = distance,
+    clearances = clearances,
+    source = source,
+    loadInto = loadInto,
+    extract = extract,
+    events = function() return events end,
+    picks = function() return picks end,
+    advance = function(ms) elapsed = elapsed + ms; return elapsed end,
+    totals = function() return groups, checks end,
+}

@@ -8,7 +8,7 @@ local prompts <const> = {
     { "FIND A SWEET SPOT", "Turn clockwise slowly.\nWhen the dial shakes\nwith a loud click,\nyou found a sweet spot.\nFind 3 to open the safe." },
     { "NICE! ONE FOUND", "Turn counterclockwise\nslowly this time.\nThe next loud click\nmeans you found\nanother sweet spot." },
     { "ONE MORE TO GO", "Turn clockwise again.\nKeep it slow.\nListen for one last\nloud click." },
-    { "YOU FOUND ALL 3!", "Stop turning the crank.\nPress A to open\nthe safe." },
+    { "YOU FOUND ALL 3!", "Stop turning the crank.\nPress D-pad Down\nto open the safe." },
     slow = { "TRY A SLOWER TURN", "That turn was too fast.\nYour progress is reset.\nTry turning clockwise\nmore slowly." },
     reset = { "EASY DOES IT", "Turning too fast makes\nyou start over.\nTurn clockwise slowly\nto find the first spot." },
     locked = { "NOT READY YET", "Opening too soon\nresets your progress.\nFind all 3 spots first.\nStart again by turning\nclockwise slowly." },
@@ -41,7 +41,7 @@ function Tutorial.draw(step, tumbler, x, y, w, h, gap)
                 gfx.drawText("TUTORIAL 2/2", 10, gap + 10)
                 gfx.drawLine(10, gap + 28, w - 10, gap + 28)
                 gfx.setFont(Art.subFont)
-                gfx.drawText("Turn clockwise slowly.\nAfter clicks 1 and 2,\nturn the other way.\nOn click 3, press A.\nIf progress resets,\nstart clockwise again.", 10, gap + 36)
+                gfx.drawText("Turn clockwise slowly.\nAfter clicks 1 and 2,\nturn the other way.\nOn click 3, press Down.\nIf progress resets,\nstart clockwise again.", 10, gap + 36)
             else
                 local prompt = prompts[key]
                 Art.drawPlate(0, 0, w, fullH)

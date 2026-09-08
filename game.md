@@ -29,7 +29,7 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
   briefly) and an **audio cue** (a k-chk, something latching into place).
 - **Turn too fast and progress resets. Too slow and the timer runs out.**
 - There are **3 sweet spots** to hit consecutively, in alternating directions.
-- The player must **press Ⓐ to pull the handle**. Pulling it before all 3 are found resets the
+- The player must **press D-pad Down to pull the handle**. Pulling it before all 3 are found resets the
   whole progress.
 
 ---
@@ -43,7 +43,7 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | Sweet spots | 3 to find; one real spot is generated at a time |
 | Directions | CW → CCW → CW |
 | Timer | **3 minutes** (counts down, `mm:ss.cc`) |
-| Open the safe | Press Ⓐ after all 3 are found |
+| Open the safe | Press D-pad Down after all 3 are found |
 | Refresh rate | 50 fps |
 | Screens | Title → Play → Win / Lose → (Ⓑ) → Title |
 | Tutorial | **Ⓑ on the title** — 2 scripted untimed runs: bare dial, then BLACKOUT alone |
@@ -56,7 +56,9 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | `GAME_MS` | `180000` | Run length, 3 minutes |
 | `Spots.MIN_GAP` | `18` | New real spot's minimum circular distance from the current dial and fixed decoy; defined in `source/spots.lua` |
 | `DEG_PER_UNIT` | `3.6` | Crank degrees per dial unit → **1 crank revolution = 1 dial revolution** |
-| `TOL` | `2.2` | Sweet spot half-width in dial units (zone is 4.4 units ≈ 7.9° wide) |
+| `TOL` | `2.2` | Sweet spot half-width in dial units (full zone is 4.4 units ≈ 15.84° wide) |
+| `Keypad.LENGTH` | `4` | Directional inputs required to secure each spot with KEYPAD |
+| `Keypad.HOLD_TOL` | `4.4` | Allowed distance from a found spot during arrow entry: ±15.84° of crank rotation |
 | `cfg.maxEngage` | `25` | Max speed to latch — 25 units/**sec** ≈ **90°/sec**. Per-run, so it lives in `Mods.buildCfg`, not `main.lua` |
 | `RESET_SPEED` | `80` | Speed above which progress resets — 80 units/sec ≈ **288°/sec** |
 | `DEAD_SPEED` | `1.5` | Below this the dial counts as stationary |
@@ -109,7 +111,7 @@ Layout ported from `images/hud-01-vault-door.png`.
     │      │ ( DIAL ) │      ╔═ TOO LOUD ══╗ │
     │      ╰─────────╯       ╚════════════╝ │  ← dial sits in a dithered
     │        K-CHIK!         ╔═ GUARD ═════╗ │    recess, left of centre
-    │        Ⓐ OPEN?         ╚════════════╝ │
+    │        ↓ OPEN?         ╚════════════╝ │
     │ · · · · · · · · · · · · · · · · · ·  │
     └──────────────────────────────────────┘
 
@@ -119,7 +121,7 @@ Layout ported from `images/hud-01-vault-door.png`.
 | Dial well | (122,120) r=64, 25% dither, 2px rim |
 | Dial | (122,120) r=52 — centred in the door's inner area (y 8–232) |
 | Modifier plates | x=232, y=20 + i·68, 140x58, corners **scooped inward** (r=6) |
-| Ⓐ OPEN? | centred under the dial at y=186 |
+| ↓ OPEN? | centred under the dial at y=186 |
 | Ⓑ MENU | directly below it at y=204 |
 
 Card fill, shadow and outline are all the **same polygon** (`notchedPoly` in `dial.lua`), so the
@@ -134,7 +136,7 @@ no smaller weight to fall back to, so names must stay at or under 13 characters.
 `Run.cfg` — the tunables the run plays by. Effects and their visuals are both implemented (§12b).
 
 **There is no progress indicator during normal play or the BLACKOUT tutorial.** The player tracks their own progress from the
-audio/visual cues. `Ⓐ Open?` is therefore a genuine gamble.
+audio/visual cues. `↓ Open?` is therefore a genuine gamble.
 
 ### Tutorial
 
@@ -156,10 +158,10 @@ readout. This is the only lesson that reveals progress:
 | Start | `FIND A SWEET SPOT` — turn clockwise slowly; a loud click and dial shake mean a sweet spot; find 3 to open |
 | First latch | `NICE! ONE FOUND` — turn counterclockwise slowly and listen for another loud click |
 | Second latch | `ONE MORE TO GO` — clockwise again, slowly; listen for one last loud click |
-| Third latch | `YOU FOUND ALL 3!` — stop turning the crank and press A to open |
+| Third latch | `YOU FOUND ALL 3!` — stop turning the crank and press D-pad Down to open |
 | Graze | `TRY A SLOWER TURN` — the turn was too fast and progress reset; try clockwise more slowly |
 | Overspeed | `EASY DOES IT` — turning too fast makes you start over; turn clockwise slowly to find the first spot |
-| Early A | `NOT READY YET` — opening too soon resets progress; find all 3 spots first, starting clockwise slowly |
+| Early Down | `NOT READY YET` — opening too soon resets progress; find all 3 spots first, starting clockwise slowly |
 
 The tutorial calls the goals **sweet spots**, and teaches the loud click and dial shake that
 identify one. It uses full sentences and small encouragements instead of mechanism jargon or
@@ -172,7 +174,7 @@ The panel draws after manga SFX so latch lettering cannot cover the instructions
 
 Lesson 2 keeps its **BLACKOUT card** in the top slot and fills the two slots below with a
 148×126 instruction plate headed `TUTORIAL 2/2`: turn clockwise slowly, turn the other way after
-clicks 1 and 2, press A on click 3, and start clockwise again if progress resets. The BLACKOUT
+clicks 1 and 2, press Down on click 3, and start clockwise again if progress resets. The BLACKOUT
 card above explains that it is too dark to see and to listen for loud clicks. These instructions are
 **static**, including on hits, errors and completion: the player must learn to count by ear.
 They appear in the lit opening and through the flashlight with the card once it turns on;
@@ -307,7 +309,7 @@ It does not guarantee exactly five sounds: the fake may be missed or crossed rep
 or more real latches clears the count and generates a new first target away from the current
 dial. Previously found real positions are not replayed. Required directions and the decoy stay
 the same for the run. At zero progress, errors keep the existing target so spinning or pressing
-A cannot repeatedly reroll the search. A zero-progress graze stays disarmed until leaving its
+Down cannot repeatedly reroll the search. A zero-progress graze stays disarmed until leaving its
 zone; a newly spawned distant target is armed immediately.
 
 WANDERING moves only the active real target while the dial is still. With DECOY it reflects at
@@ -318,15 +320,16 @@ latch until the player actually turns the crank.
 Per frame, in order:
 
 0. `speed > RESET_SPEED` → reset progress to tumbler 1, `RESET!`. This still applies after
-   all three are found, which is why the tutorial says to stop cranking before pressing A. *(§7)*
+   all three are found, which is why the tutorial says to stop cranking before pressing Down. *(§7)*
 1. `tumbler > cfg.tumblers` → **stop** all sweet spot detection, including the decoy.
-   Otherwise check the fixed decoy, then the current real target below.
+   An active KEYPAD bubble instead checks its hold range and returns (§6b). Otherwise check
+   the fixed decoy, then the current real target below.
 2. Not inside `±TOL` of the current target → **re-arm** and stop.
 3. Not armed → stop. *(prevents re-triggering while sitting inside the zone)*
 4. `speed < DEAD_SPEED` (1.5 units/sec) → stop. *(can't latch a stationary dial)*
 5. Wrong direction → stop.
 6. `speed > MAX_ENGAGE_SPEED` → **graze**. *(§7)*
-7. **Hit.**
+7. With KEYPAD, **begin arrow entry** (§6b); otherwise **hit**.
 
 On a hit:
 - The dial **snaps exactly onto the target** (via `posOffset`), so it lands on a clean number.
@@ -334,7 +337,50 @@ On a hit:
 - `sweet.wav` + a `K-CHIK!` manga SFX placed randomly around the dial.
 - Advance to the next tumbler and spawn a new real target at least 18 units away, armed.
   On the final latch, remove the real target and stop fake clicks too. The existing overspeed
-  reset still applies until the player presses A.
+  reset still applies until the player presses Down.
+
+### 6b. KEYPAD: find, hold, enter
+
+The correct approach direction and ordinary entry speed/tolerance still apply. Entering a real
+spot with KEYPAD snaps the dial to its center, opens a **four-arrow speech bubble**, and plays
+the quiet UI hover cue. It does **not** shake, play the real latch sound, or advance the count.
+
+Keep the crank within **±4.4 dial units** of that spot and enter the displayed D-pad directions
+in order. The hold range is twice the normal entry tolerance, leaving room to settle the crank
+after discovering the spot. A marker in the bubble shows the signed offset and both limits.
+The crank remains live and one-to-one; the game does not lock the player's input.
+
+- Each accepted arrow inverts its cell; an underline marks the next arrow.
+- One wrong direction clears **only the arrow progress**, plays the supplied `sound-fxs/error.ogg`
+  through `sounds/keypad-error.wav`, and displays `TRY AGAIN / START FROM THE FIRST ARROW`.
+  The spot, code, and earlier real latches remain intact. There is no separate input deadline.
+- Leaving the hold range dismisses the bubble and clears arrow progress. Find the same spot
+  again using the required approach direction; it keeps the same code. Normal global overspeed
+  resets still apply, so a wild spin can still lose earlier latches.
+- Four correct inputs perform the normal real latch, including its sound/shake and the next
+  target spawn. Only that final feedback counts as a found spot.
+- Codes are generated once per new real target. Adjacent repeated directions are allowed and
+  require separate taps. Retry errors and ordinary departures never reroll a code.
+- A chord/diagonal is a single invalid input, never an arbitrary choice of one direction.
+  Release all directions to continue after a chord. Holding a direction never auto-repeats.
+
+**Input ownership prevents accidental opening.** While the bubble is active, all D-pad input
+belongs to it. A frame that dismisses or completes the bubble also consumes its input, including
+Down. The player must release the D-pad before a later fresh Down can pull the handle. Direction
+buttons held when the bubble appears must first be released. A is inactive during play.
+
+Pausing or docking suspends entry and the run clock. The normal run clock continues during
+active entry. WANDERING freezes the acquired target while its bubble is open and resumes
+wandering after the player leaves. GUARD still checks crank movement only, so a stopped player
+can enter arrows during a guard warning.
+
+`source/keypad.lua` owns code/progress/retry state. `Keypad.updateInput` in `main.lua` handles
+device input after the crank/zone checks, so an out-of-range final arrow cannot latch a spot.
+`source/keypad-ui.lua` owns the cached speech bubble: body `(28,121)` at `186×76`, an upward tail
+toward the dial hub, a 4px checkered shadow, four native 16px arrows, and a live position marker.
+It covers the lower dial and hides the open prompt while keeping the timer, modifier cards,
+upper dial, and menu prompt visible. The bubble draws above ordinary SFX; its static image is
+rebuilt only when the code, accepted count, or error state changes.
 
 ---
 
@@ -363,14 +409,18 @@ At tumbler 1 neither gate can cost progress (there is none), and neither rerolls
 
 ---
 
-## 8. The handle (Ⓐ)
+## 8. The handle (D-pad Down)
 
-Ⓐ pulls the handle at any time during play, **except while the crank is docked**:
+D-pad **Down** pulls the handle during play, except while the crank is docked, BLACKOUT is
+opening, or a KEYPAD sequence owns the D-pad:
 
 - **All 3 found** → the safe opens.
 - **Otherwise** → `LOCKED!` + a two-note thud, and **progress resets to tumbler 1**.
 
-This intentionally reverses the original crank-only design. It converts a pure execution task
+Down uses the left thumb while the right hand stays on the crank. A retains its title, menu
+and end-screen actions, but does nothing during play.
+
+The handle intentionally reverses the original crank-only design. It converts a pure execution task
 into a decision: *"was that third K-CHIK real, or did I miscount?"*
 
 Ⓑ during play opens the **pause menu** (§8b). It used to toggle the FPS counter; that debug
@@ -404,7 +454,7 @@ half is reserved above the first row so it cannot crowd it.
 - The cursor is `images/hand-cursor.png`, **poking along X** on a sine (0–5px) — it points at the
   live row rather than spinning in place.
 - **Resume** closes · **Quit** slides up to the title.
-- **Modifiers** opens the catalogue of **all 12**, not just the run's three — a reference the
+- **Modifiers** opens the catalogue of **all 10**, not just the run's three — a reference the
   player can browse. Two pages of six, laid out 2 columns x 3 rows, each cell carrying the same
   icon + title + subtitle as a door card. Left/Right (or Up/Down) flips pages, Ⓐ or Ⓑ goes back.
 - The panel is sized to its content: `menuBox()` measures **every** string that has to fit, each in
@@ -428,6 +478,12 @@ half is reserved above the first row so it cannot crowd it.
 | `uiConfirm` | `ui-confirm.wav` | Going *in*: opening the menu, entering the catalogue, Quit |
 | `uiBack` | `ui-cancel-back.wav` | Coming *out*: Resume, leaving the catalogue, Ⓑ to the title |
 | `uiHover` | `ui-hover.wav` | The cursor moving between menu rows, and catalogue page flips |
+| `keypadError` | `keypad-error.wav` | Supplied `sound-fxs/error.ogg`, converted to mono 44.1 kHz 16-bit PCM; wrong-arrow retry, with visible reset |
+
+KEYPAD also uses the quiet `uiHover` cue for discovery and accepted intermediate arrows;
+the real `sweet` sound is reserved for a completed code. Rebuild the error asset with:
+
+    ffmpeg -i sound-fxs/error.ogg -ar 44100 -ac 1 -c:a pcm_s16le source/sounds/keypad-error.wav
 | `flashlight` | `flashlight-turn-on.mp3` | BLACKOUT's opening only. Never ducked. Trimmed to 0.32 s; two clicks 210 ms apart |
 
 #### The mix — one table, `Sfx.mix`
@@ -462,6 +518,7 @@ except the debug page.
 | `fail` | 29.6 | `bgmClub` | 40.0 |
 | `handle` | 40.0 | `bgmNight` | 28.4 |
 | `cleared` | 33.0 | `start` | 29.6 |
+| `keypadError` | 40.0 | — | — |
 
 **These defaults are not precious.** They are the pre-mixer levels converted across; the debug Audio
 page exists to replace them by ear.
@@ -476,7 +533,7 @@ Two levels are **multiplied**, not replaced, so an entry set to 0 dB really is s
 walks. The four beds carry a `track` field; everything else is a one-shot.
 
 UI sounds are keyed to **intent, not to the button**. Ⓐ on `Resume` plays the *back* sound because
-it leaves the menu; Ⓑ opening the menu plays *confirm* because it goes in. `Ⓐ OPEN?` during play is
+it leaves the menu; Ⓑ opening the menu plays *confirm* because it goes in. `↓ OPEN?` during play is
 deliberately excluded — it is a game action, and it already has the handle sounds.
 
 Source MP3s live in `sound-fxs/`; the Playdate needs WAV for `sample.new`, so they are converted:
@@ -551,9 +608,10 @@ leaves it sitting high. `Art.inkBand(font, text)` renders the string once, scans
 last inked row, and caches the result; the Ⓐ/Ⓑ prompts, the card icons and the timer all centre on
 that ink.
 
-**Icons:** every HUD glyph is 14x14 to match the 13px label font — the modifier icons, the timer's
-clock, and the Ⓐ/Ⓑ buttons (`images/svg/icons-pixel.js`). The old 22px `clock`, `btn-a` and `btn-b`
-are gone.
+**Icons:** modifier icons, the clock, and Ⓐ/Ⓑ buttons are 14x14. The four user-supplied D-pad
+arrows stay at their native 16x16 size, copied unchanged into `source/images/dpad-*.png`. Down
+replaces A in the open prompt, whose alignment now measures each icon's actual size. KEYPAD
+has a cached 14x14 six-button icon drawn by `Mods.iconImage`.
 
 **Fonts:** Roobert for the chrome, **Nontendo** for the modifier cards, **Bouncy-30** for the
 manga SFX.
@@ -585,8 +643,8 @@ the dial uses the 10px cut.
 | Original plan | Now | Why |
 |---|---|---|
 | 5:00 timer | **3:00** | 5 min was slack even for a ~20 s loop; 1:00 left no room once three modifiers were stacked on it |
-| Crank-only, no buttons | **Ⓐ pulls the handle** | Adds a real decision + a way to fail by nerve, not just by clock |
-| `○ ○ ○` progress shown during play | **Hidden** (shown only on the lose screen) | Forces the player to track their own count; makes Ⓐ a gamble |
+| Crank-only, no buttons | **D-pad Down pulls the handle** | Adds a real decision + a way to fail by nerve, not just by clock |
+| `○ ○ ○` progress shown during play | **Hidden** (shown only on the lose screen) | Forces the player to track their own count; makes Down a gamble |
 | Tolerance ±1 (36–38) | **±2.2** | Tuned to how precise the crank actually feels |
 | No speed rules | **Graze + reset gates** | The "turn too fast" rule — gives fast cranking a real cost |
 | Tick per dial unit | **Every 4 units** | 100/rev was mush; 25/rev reads as distinct detents |
@@ -599,7 +657,7 @@ the dial uses the 10px cut.
 
 ## 12. Modifiers
 
-Nine active modifiers. **Every normal run draws 3.** Their effects are implemented below.
+Ten active modifiers. **Every normal run draws 3.** Their effects are implemented below.
 
 ### The set
 
@@ -611,9 +669,10 @@ Nine active modifiers. **Every normal run draws 3.** Their effects are implement
 | 7 | **FOUR TUMBLERS** | Memory | `time` | `lock` | 4 real latches instead of 3, generated one at a time |
 | 8 | **WANDERING** | Memory | — | `compass` | The active real target drifts while you are *not* cranking, reflecting before it reaches the decoy. **Drift ≤ `Mods.MAX_DRIFT` (5 units/sec)** |
 | 9 | **DECOY** | Risk | — | `help` | One fixed fake spot: a click ending in a buzz, no dial shake, no progress |
-| 10 | **ONE SHOT** | Risk | `fail` | `skull` | A wrong Ⓐ ends the run instead of resetting progress |
+| 10 | **ONE SHOT** | Risk | `fail` | `skull` | A wrong Down handle pull ends the run instead of resetting progress |
 | 11 | **GUARD** | Event | `fail` | `bell` | Footsteps: stop cranking within 3 s or you're caught |
 | 12 | **NITRO** | Body | `fail` | `flask` | Tilt left/right to keep the liquid from spilling; a spill ends the run |
+| 13 | **KEYPAD** | Input | — | six-button keypad | Hold a found spot while entering four visible D-pad arrows to latch it |
 
 ### Player-facing descriptions
 
@@ -626,12 +685,13 @@ and debug picker. Each line fits the narrowest text column (110 px) in Nontendo-
 | BLACKOUT | It is too dark to see. | Listen for loud clicks. |
 | TOO LOUD | The clicks are silent. | Watch for dial shakes. |
 | SCRAMBLED | Try both directions | for each sweet spot. |
-| FOUR TUMBLERS | Find 4 sweet spots | before pressing A. |
+| FOUR TUMBLERS | Find 4 sweet spots | then press Down. |
 | WANDERING | Sweet spots move | when you stop turning. |
 | DECOY | Fake clicks end in a | buzz, with no shake. |
-| ONE SHOT | Press A too soon | and you lose. |
+| ONE SHOT | Press Down too soon | and you lose. |
 | GUARD | When you hear steps, | stop for 3 seconds. |
 | NITRO | Tilt to keep the | liquid from spilling. |
+| KEYPAD | Hold the dial still. | Enter the arrows. |
 
 The clicks in this copy are the sweet-spot sounds taught in the tutorial, not the quiet ticks
 while the crank turns. TOO LOUD mutes those sounds, so it directs attention to the dial shake.
@@ -648,7 +708,7 @@ four from [Pictogrammers Memory](https://github.com/Pictogrammers/Memory). Asset
 `source/modifiers.lua` carries the catalogue (id, name, sub, icon, axis, tags), the icon loaders,
 the pair-scoring rules as `Mods.pairClass` / `Mods.score` / `Mods.roll`, and per-run configuration
 through `Mods.buildCfg`. Effect behavior lives in `main.lua`. Its rule tables reproduce the
-19 banned / 24 hard / 41 normal split stated below; change the two together.
+41 banned / 25 hard / 54 normal split stated below; change the two together.
 
 ### Modes and combinations
 
@@ -659,31 +719,34 @@ is now judged directly, per pair, and drives two modes.
 
 | Class | Weight | Meaning |
 |---|---|---|
-| **banned** | — | The run is impossible. Never offered in any mode |
+| **banned** | — | Impossible, overloaded, or the combination defeats a modifier's purpose. Never offered in normal rolls |
 | **hard ×2** | 2 | On its own makes a run hard mode |
 | **hard ×1** | 1 | Needs a second friction to qualify |
-| normal | 0 | Everything else — 22 of the 36 pairs |
+| normal | 0 | Everything else — 28 of the 45 pairs |
 
 **A drawn triple is scored by its three pairs:** any banned pair → discard; total ≥ 2 → **HARD**;
 otherwise → **NORMAL**.
 
-**84 possible triples → 19 banned, 24 hard, 41 normal. 65 playable runs.**
+**120 possible triples → 41 banned, 25 hard, 54 normal. 79 playable runs.**
 
-**Nine modifiers, not twelve.** HAIR TRIGGER, GREASED and STICKY were cut after playtesting: all
+**Ten active modifiers.** HAIR TRIGGER, GREASED and STICKY were cut after playtesting: all
 three were the same idea — degrade the player's control of the dial — and the loop already
 punishes speed errors brutally, since a graze and an over-speed both wipe progress. So they never
 added a challenge, they multiplied an existing punishment. They failed the test the rest of the
 set passes: **a modifier has to hand the player a new way to play, not worse hands.** Revising was
 not an option, because every "make the dial harder to control" idea lands in the same place.
-Three replacement slots are open.
+KEYPAD fills one replacement slot; two remain open.
 
-#### Banned — genuinely impossible (3 pairs)
+#### Banned — incompatible or counterproductive (6 pairs)
 
 | Pair | Why |
 |---|---|
 | BLACKOUT + TOO LOUD | Both continuous channels gone; only discrete SFX text remains |
 | TOO LOUD + GUARD | GUARD's *only* warning before a hard game over is audio, and TOO LOUD exists to bury audio |
 | BLACKOUT + NITRO | The water layer would have to render over a pitch-black screen with no readable contrast, while a hidden tilt limit kills the run |
+| KEYPAD + BLACKOUT | The required visible arrow sequence cannot be read |
+| KEYPAD + NITRO | User-requested ergonomic exclusion: holding the dial, entering arrows, and balancing liquid overload the hands |
+| KEYPAD + DECOY | A bubble appears only at real spots, immediately giving the fake away. Excluded to preserve DECOY's purpose, not because the pair is too hard |
 
 #### Hard ×2 — stacked death (3 pairs)
 
@@ -713,11 +776,27 @@ alone leaves one cue, so both pairs remain allowed and classified hard. BLACKOUT
 still banned. The previous bass-only fake was too hard to distinguish on the user's device;
 the new buzz is a concrete sound-design change, not a claim that measurements prove fairness.
 
+#### KEYPAD's allowed pairings
+
+- **WANDERING:** the acquired target freezes during entry; searching still has drift. This also
+  keeps KEYPAD + WANDERING + GUARD answerable while the crank must be stopped.
+- **GUARD:** D-pad entry is permitted while the crank is stopped. Guard warnings and deadlines
+  continue; input errors themselves never trigger the guard.
+- **TOO LOUD:** arrows, inverted progress cells, and the retry message provide complete visual
+  feedback. Final latch shake remains visible, even when the latch sound is muted.
+- **SCRAMBLED:** the correct crank direction is still needed to reveal the code.
+- **FOUR TUMBLERS:** four spots, each with the same four-input code length.
+- **ONE SHOT:** only a separate fresh Down outside entry can pull the handle. A wrong arrow
+  or a Down on a completion/cancellation frame never becomes a fatal handle pull.
+
+These six new allowed pairs have weight 0; existing pair weights still determine the triple's
+mode. Extra typing alone does not create a hidden speed requirement or a new instant loss.
+
 #### BLACKOUT and other UI tells
 
 Under BLACKOUT only the timer and the three cards are lit, so any tell drawn elsewhere goes dark.
 
-- **ONE SHOT + BLACKOUT is allowed.** The trembling Ⓐ element is invisible and that tell is
+- **ONE SHOT + BLACKOUT is allowed.** The trembling Down element is invisible and that tell is
   deliberately sacrificed — ONE SHOT's rule is stated on its card, and the tremble is flavour
   rather than information the player needs to survive.
 - **DECOY + BLACKOUT leaves exactly one tell.** With no `K-CHIK!` text and no shake, the player
@@ -738,7 +817,7 @@ Play moves from one centred dial to a two-column layout inside a **vault-door fr
     ║                    │ ◆ NAME    │ ║
     ║                    │   subtitle│ ║
     ║                    ├───────────┤ ║
-    ║   Ⓐ Open?          │ ◆ NAME    │ ║
+    ║   ↓ Open?          │ ◆ NAME    │ ║
     ║                    │   subtitle│ ║
     └══════════════════════════════════┘
 
@@ -837,6 +916,7 @@ needs a special case at its call site.
 | `bgmTrack` `bgmVol` `mechVol` | `sounds/bgm` `0.12` `1.0` | TOO LOUD → nightclub/1.00/0.10 · GUARD → ambience/**0.26** |
 | `tumblers` | `3` | FOUR TUMBLERS → `4` |
 | `randomDirs` | `false` | SCRAMBLED |
+| `keypad` | `false` | KEYPAD requires four D-pad inputs after finding each real spot |
 | `drift` | `0` | WANDERING → `Mods.MAX_DRIFT` (5) |
 | `decoy` `oneShot` `guard` `nitro` | `false` | their own modifiers |
 
@@ -849,7 +929,10 @@ needs a special case at its call site.
   `sweet-fake.wav`, shows the same `K-CHIK!`, and **never sets `shakeStart`**. The buzz in the tail
   and missing shake are its two tells. A fixed position is guaranteed when DECOY is active.
 - **WANDERING** — `driftTargets`, only while the dial is under `DEAD_SPEED`. The active real
-  target moves at 5 units/sec, reflecting at 18-unit clearance from the fixed decoy.
+  target moves at 5 units/sec, reflecting at 18-unit clearance from the fixed decoy; it pauses
+  while a KEYPAD bubble is open.
+- **KEYPAD** — `checkTumbler` enters/validates the hold; `Keypad.updateInput` consumes arrows;
+  `latchTarget` awards the real latch after completion. See §6b.
 - **GUARD** — `updateGuard`. A footstep every 5–9 s, then `GUARD_GRACE_MS` (3000) to stop. Still
   moving when the grace expires and the run ends. The grace is what makes an audio-only hard-fail
   fair. The ambience bed sits well back at **0.26** so the steps cut through it: missing one is a
@@ -863,10 +946,15 @@ needs a special case at its call site.
 same slide-down as a time-out with a different word: `CAUGHT!` for ONE SHOT and GUARD, `BOOM!` for
 NITRO. The lose panel draws `cfg.tumblers` dots, not always three, and lists `Run.mods` under them.
 
-**Not yet verified.** The effects compile and the simulator boots clean, but no modifier has been
-played through. `Mods.buildCfg` and the pair rules are cross-checked against this document
-(12 modifiers, 38 banned / 38 hard / 144 normal triples); the *feel* of every constant above —
-friction, stiction, drift, grace, tilt limit — is a first guess awaiting a device.
+**Validation scope.** Automated checks exercise target placement, complete runs, resets, keypad
+input ownership, and modifier compatibility. The ten-modifier catalogue has 41 banned / 25 hard /
+54 normal triples. Hold tolerance, bubble readability, and error-sound balance still need playtesting
+on the physical device; passing logic checks does not establish their feel.
+
+The input suite passes 25 groups / 505,865 checks. SDK render checks cover the full-game bubble,
+accepted arrows, retry, Down prompt, both tutorial panels, modifier picker, and audio mixer.
+The simulator renders those screens but crashes on its scripted exit; an unchanged HEAD build
+reproduces that exit crash too. The isolated graphics-only preview exits cleanly.
 
 ### Debug modifier picker
 
@@ -907,7 +995,7 @@ Pause menu → **Debug → Audio**. Every entry in `Sfx.mix`, one per row, edite
 on the spot.
 
     ┌──────────────────────────────────────────────┐
-    │ AUDIO                                   1/20 │
+    │ AUDIO                                   1/21 │
     │ ─────────────────────────────────────────────│
     │ ☞ TICK        ████████████░░░░░░    28.4 dB  │
     │   GRAZE       ██████████████░░░░    34.0 dB  │
@@ -918,7 +1006,7 @@ on the spot.
     │ L/R LEVEL   Ⓐ PLAY   Ⓑ BACK                  │
     └──────────────────────────────────────────────┘
 
-- **Up/Down** move between sounds (wraps). 20 entries do not fit on 240px, so the list shows
+- **Up/Down** move between sounds (wraps). 21 entries do not fit on 240px, so the list shows
   **8 rows** and scrolls to keep the cursor in view. Moving **silences** whatever the last row was
   playing — otherwise a bed keeps looping under the next entry.
 - **Left/Right** move the level and **re-trigger the sound immediately**. Held, it ramps: 300 ms
@@ -990,7 +1078,7 @@ appears.
 
 ### 12c. Visual layer — implemented
 
-Five modifiers draw something.
+Six modifiers draw something.
 
 **BLACKOUT** — `buildBlackout()` bakes the whole dark room once. A flashlight at `(300, 272)`,
 below the bottom edge.
@@ -1015,7 +1103,7 @@ That high card floor is why the door needs its own mask: one shared curve either
 door's falloff or makes the cards unreadable.
 
 The timer is drawn after `clearStencil`, so the blackout never touches it. No dial, no shake, no
-SFX text, no Ⓐ prompt: the run is played by ear.
+SFX text, no Down prompt: the run is played by ear.
 
 **The opening.** A BLACKOUT run does not start dark — it *goes* dark, in front of the player, so
 losing the dial reads as something that happens to them rather than a screen they were handed.
@@ -1053,7 +1141,7 @@ off the top edge on a random diagonal, left or right, and simply leave the scree
 nothing pops out mid-flight. They spawn only in `x = 45..175` and are culled past `x = 205`:
 **a note crossing a card wrecks the one thing the player must always be able to read.**
 
-**ONE SHOT** — the `Ⓐ OPEN?` prompt trembles, `sin(now()/26) * 1.6` px, forever. Flavour, not
+**ONE SHOT** — the `↓ OPEN?` prompt trembles, `sin(now()/26) * 1.6` px, forever. Flavour, not
 information — the card already states the rule, which is why losing it under BLACKOUT costs
 nothing.
 
@@ -1156,8 +1244,12 @@ With DECOY, reflect at its 18-unit clearance boundary so the two spots cannot ov
 or direction advance. Fires again on a valid re-entry, so it is a learnable landmark. It survives
 progress resets in the same place. Once every real spot is found, it stops firing.
 
+**13 · KEYPAD** — the four-arrow spot confirmation in §6b. Wrong arrows retry only the code;
+leaving the hold area requires reacquiring the same target. Its bubble is the visual layer;
+BLACKOUT, NITRO, and DECOY are excluded from normal rolls with it.
+
 **10 · ONE SHOT** — `tryHandle`'s failure branch jumps straight to lose, with a `CAUGHT` end
-screen. UI detail: the **Ⓐ Open? element trembles** — a fast, small, indefinitely repeating
+screen. UI detail: the **↓ Open? element trembles** — a fast, small, indefinitely repeating
 left-right shake, like it is scared of being pressed.
 
 **11 · GUARD** — `ambience.wav` loops for the whole run. `footstep.wav` fires occasionally; from
@@ -1173,7 +1265,7 @@ Tilt past the limit and it spills — run over.
 
 ### Axes (descriptive only)
 
-Perception 2 · Memory 3 · Risk 2 · Event 1 · Body 1 — **Motor is empty**
+Perception 2 · Memory 3 · Risk 2 · Event 1 · Body 1 · Input 1 — **Motor is empty**
 
 Kept as a way to talk about what a modifier twists, and as a rough guide when adding new ones —
 Event and Body have one member each, so those are the thin spots. They no longer gate any draw.
@@ -1193,9 +1285,11 @@ Score/best-time persistence, any story or characters, and no index pointer on th
                     Run.mods / Run.has(id) — the rolled modifiers, for the effects work
       dial.lua      Art.*  — dial, vault door, dial well, timer plate, modifier cards,
                     manga SFX baking, progress dots, fonts, icons
-      modifiers.lua Mods.* — the 12 modifiers, their icons, pair scoring. Data + art only
+      modifiers.lua Mods.* — the 10 modifiers, their icons, pair scoring. Data + art only
       tutorial.lua  Tutorial.* — lesson prompts, error feedback, cached guidance plates
       spots.lua     Spots.* — guaranteed active-target placement and drift around the fixed decoy
+      keypad.lua    Keypad.* — one four-arrow code per real target, progress and retry state
+      keypad-ui.lua KeypadUI.* — cached speech bubble, arrow cells, signed hold-range marker
       images/modifiers/          12 standalone 14x14 icons
       images/mod-icons-table-14-14.png  the same 12 as an imagetable (loads as images/mod-icons)
       sound.lua   Sfx.*  — samples, synths, BGM, and Sfx.mix: every level in the game
@@ -1203,8 +1297,9 @@ Score/best-time persistence, any story or characters, and no index pointer on th
       launcher/   card.png 350x155 · icon.png 32x32 · launchImage.png 400x240
       pdxinfo     name=Safu, bundleID=com.vincent.safu, imagePath=launcher
 
-Run `luajit tests/spots.lua` from the project root to check placement, complete three- and
-four-tumbler runs, fixed decoys, resets, SCRAMBLED, and WANDERING against the game logic.
+Run `luajit tests/keypad.lua` from the project root for the input/state/compatibility suite,
+including the placement, complete runs, fixed decoys, resets, SCRAMBLED, and WANDERING checks
+from `tests/spots.lua` against the game logic.
 `scripts/build-decoy-sound.py` rebuilds the click-and-buzz sample; see §12 for its comparison option.
 
 ---
@@ -1270,7 +1365,7 @@ The cards were the cost: three concave-polygon fills each, plus `drawTextInRect`
 
 **The rule: nothing static gets drawn per frame.** The door, the dial well, the timer plate chrome
 and the three modifier cards are drawn once into `bgImage` at `startGame()` and blitted. Only the
-dial (it rotates), the timer digits, the Ⓐ prompt and the manga SFX are live. `bgImage` is
+dial (it rotates), the timer digits, the Down prompt, KEYPAD bubble and the manga SFX are live. `bgImage` is
 invalidated by setting it to `nil` — do that if anything static changes mid-run.
 The first tutorial's guidance is a separate cached image selected on progress/error changes;
 the BLACKOUT tutorial's static guide is baked alongside its modifier card.

@@ -38,6 +38,7 @@ Sfx.mix = {
     uiConfirm  = 40.0,
     uiBack     = 40.0,
     uiHover    = 33.0,
+    keypadError = 40.0,
     bgmTitle   = 30.8,
     bgmDefault = 21.6,
     bgmClub    = 40.0,
@@ -72,6 +73,7 @@ Sfx.mixList = {
     { id = "uiConfirm",  name = "UI CONFIRM", sub = "menu A" },
     { id = "uiBack",     name = "UI BACK",    sub = "menu B" },
     { id = "uiHover",    name = "UI HOVER",   sub = "menu move" },
+    { id = "keypadError", name = "KEYPAD ERROR", sub = "wrong arrow" },
     { id = "bgmTitle",   name = "BGM TITLE",  sub = "title bed",  track = "sounds/title" },
     { id = "bgmDefault", name = "BGM RUN",    sub = "default bed", track = "sounds/bgm" },
     { id = "bgmClub",    name = "BGM CLUB",   sub = "too loud",   track = "sounds/nightclub" },
@@ -107,6 +109,7 @@ local footstepSample <const> = snd.sample.new("sounds/footstep")
 local uiConfirmVoice = snd.sampleplayer.new("sounds/ui-confirm")
 local uiBackVoice = snd.sampleplayer.new("sounds/ui-cancel-back")
 local uiHoverVoice = snd.sampleplayer.new("sounds/ui-hover")
+local keypadErrorVoice = snd.sampleplayer.new("sounds/keypad-error")
 
 local tickVoices = {}
 local tickIdx = 1
@@ -197,6 +200,14 @@ end
 function Sfx.uiHover()
     uiHoverVoice:setVolume(Sfx.gain("uiHover"))
     uiHoverVoice:play(1)
+end
+
+-- Dedicated supplied error cue; never a fake latch or a progress-reset sound.
+-- The bubble also resets visibly, so TOO LOUD does not hide the mistake.
+function Sfx.keypadError()
+    keypadErrorVoice:stop()
+    keypadErrorVoice:setVolume(Sfx.gain("keypadError"))
+    keypadErrorVoice:play(1)
 end
 
 function Sfx.sweetSpot()
@@ -349,12 +360,13 @@ local PREVIEW <const> = {
     uiConfirm  = function() Sfx.uiConfirm() end,
     uiBack     = function() Sfx.uiBack() end,
     uiHover    = function() Sfx.uiHover() end,
+    keypadError = function() Sfx.keypadError() end,
 }
 
 -- Every one-shot voice, so a retrigger is a clean restart rather than a stack.
 local ONESHOTS <const> = {
     sweetVoice, grazeVoice, clearedVoice, fakeVoice, footstepVoice,
-    flashlightVoice, uiConfirmVoice, uiBackVoice, uiHoverVoice,
+    flashlightVoice, uiConfirmVoice, uiBackVoice, uiHoverVoice, keypadErrorVoice,
 }
 
 local function silenceOneShots()
