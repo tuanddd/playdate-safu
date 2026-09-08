@@ -1,4 +1,4 @@
--- Safu modifier catalogue — the 12 modifiers of game.md §12, their icons, and the
+-- Safu modifier catalogue — the 9 modifiers of game.md §12, their icons, and the
 -- combination rules that decide which triples are legal.
 --
 -- Data, art, the legality rules, and Mods.buildCfg — which turns a rolled set into
@@ -45,25 +45,25 @@ Mods.iconFrames = {
     ["flask"] = 12,
 }
 
--- `sub` is the card's second row, set in Nontendo-Light (13px line box). It wraps
--- to at most 2 lines in the card's 113px column — roughly 34 characters. The same
--- string is used by the pause menu's catalogue.
+-- `sub` explains what changes or what to do in plain language. Its explicit two
+-- lines fit Nontendo-Light at 110px: the narrowest of the door card (113px), pause
+-- catalogue (114px) and debug picker (110px). Keep all three readable.
 -- axis and tags are FLAVOUR ONLY — legality is decided per pair below, not by axis
 -- (game.md §12, "Modes and combinations").
 Mods.list = {
-    { id = "blackout",      name = "BLACKOUT",      sub = "The dial is not drawn",     axis = "perception", tags = { "channel" }, icon = "eye-off" },
-    { id = "too-loud",      name = "TOO LOUD",      sub = "Ticks buried in noise",    axis = "perception", tags = { "channel" }, icon = "music-note" },
-    { id = "scrambled",     name = "SCRAMBLED",     sub = "Each turn goes either way",     axis = "memory",     tags = {},            icon = "both-ways" },
-    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Four spots, not three",   axis = "memory",     tags = { "time" },    icon = "four-pins" },
+    { id = "blackout",      name = "BLACKOUT",      sub = "It is too dark to see.\nListen for loud clicks.", axis = "perception", tags = { "channel" }, icon = "eye-off" },
+    { id = "too-loud",      name = "TOO LOUD",      sub = "The clicks are silent.\nWatch for dial shakes.", axis = "perception", tags = { "channel" }, icon = "music-note" },
+    { id = "scrambled",     name = "SCRAMBLED",     sub = "Try both directions\nfor each sweet spot.", axis = "memory",     tags = {},            icon = "both-ways" },
+    { id = "four-tumblers", name = "FOUR TUMBLERS", sub = "Find 4 sweet spots\nbefore pressing A.", axis = "memory",     tags = { "time" },    icon = "four-pins" },
     -- DRIFT MUST STAY WELL UNDER MAX_ENGAGE_SPEED (25 units/sec, main.lua). A spot
     -- that drifts at or above the speed you are allowed to latch at is literally
     -- uncatchable: closing on it fast enough to keep up is itself a graze.
     -- Mods.MAX_DRIFT is the ceiling the effect must honour.
-    { id = "wandering",     name = "WANDERING",     sub = "Spots drift while you idle",   axis = "memory",     tags = {},            icon = "drift-target" },
-    { id = "decoy",         name = "DECOY",         sub = "One spot is a lie",   axis = "risk",       tags = {},            icon = "twin-marks" },
-    { id = "one-shot",      name = "ONE SHOT",      sub = "A wrong pull ends the run",   axis = "risk",       tags = { "fail" },    icon = "skull" },
-    { id = "guard",         name = "GUARD",         sub = "Freeze when you hear steps",   axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
-    { id = "nitro",         name = "NITRO",         sub = "Keep the device level",   axis = "body",       tags = { "fail" },    icon = "flask" },
+    { id = "wandering",     name = "WANDERING",     sub = "Sweet spots move\nwhen you stop turning.", axis = "memory",     tags = {},            icon = "drift-target" },
+    { id = "decoy",         name = "DECOY",         sub = "Fake clicks end in a\nbuzz, with no shake.", axis = "risk",       tags = {},            icon = "twin-marks" },
+    { id = "one-shot",      name = "ONE SHOT",      sub = "Press A too soon\nand you lose.", axis = "risk",       tags = { "fail" },    icon = "skull" },
+    { id = "guard",         name = "GUARD",         sub = "When you hear steps,\nstop for 3 seconds.", axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
+    { id = "nitro",         name = "NITRO",         sub = "Tilt to keep the\nliquid from spilling.", axis = "body",       tags = { "fail" },    icon = "flask" },
 }
 
 Mods.byId = {}
@@ -202,7 +202,9 @@ function Mods.buildCfg(mods)
         drawDial = true, showEffects = true, shake = true,
         -- the audio bed: exactly one track per run (game.md, "The audio bed").
         -- TOO LOUD and GUARD are a banned pair, so these can never both apply.
-        bgmTrack = "sounds/bgm", bgmVol = 0.12, mechVol = 1.0,
+        -- Only the track is named here; its level lives in Sfx.mix, so the debug
+        -- Audio page is the single place any volume is set.
+        bgmTrack = "sounds/bgm", mechVol = 1.0,
         -- motor
         maxEngage = 25,
         -- the puzzle
@@ -214,10 +216,10 @@ function Mods.buildCfg(mods)
     for _, m in ipairs(mods or {}) do has[m.id] = true end
 
     if has["blackout"] then c.drawDial, c.showEffects, c.shake = false, false, false end
-    if has["too-loud"] then c.bgmTrack, c.bgmVol, c.mechVol = "sounds/nightclub", 0.50, 0.18 end
+    if has["too-loud"] then c.bgmTrack, c.mechVol = "sounds/nightclub", 0.10 end
     -- The room sits well back so the steps can cut through it: missing a footstep
     -- is a hard game over, so it must be the loudest thing in a GUARD run.
-    if has["guard"] then c.bgmTrack, c.bgmVol, c.guard = "sounds/ambience", 0.26, true end
+    if has["guard"] then c.bgmTrack, c.guard = "sounds/ambience", true end
     if has["scrambled"] then c.randomDirs = true end
     if has["four-tumblers"] then c.tumblers = 4 end
     if has["wandering"] then c.drift = Mods.MAX_DRIFT end

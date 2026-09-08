@@ -40,19 +40,21 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 |---|---|
 | Dial | 0–99, front-facing, recessed in the vault door at (122,128) r=52 |
 | HUD | The screen **is** the safe door: timer plate, dial well, 3 modifier plates |
-| Sweet spots | 3, randomly generated per run |
+| Sweet spots | 3 to find; one real spot is generated at a time |
 | Directions | CW → CCW → CW |
 | Timer | **3 minutes** (counts down, `mm:ss.cc`) |
 | Open the safe | Press Ⓐ after all 3 are found |
 | Refresh rate | 50 fps |
 | Screens | Title → Play → Win / Lose → (Ⓑ) → Title |
+| Tutorial | **Ⓑ on the title** — 2 scripted untimed runs: bare dial, then BLACKOUT alone |
 | Modifiers | 3 rolled per run — **effects and custom UI both live** |
 
 ### Tuning constants (`source/main.lua`)
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `GAME_MS` | `60000` | Run length, 1 minute |
+| `GAME_MS` | `180000` | Run length, 3 minutes |
+| `Spots.MIN_GAP` | `18` | New real spot's minimum circular distance from the current dial and fixed decoy; defined in `source/spots.lua` |
 | `DEG_PER_UNIT` | `3.6` | Crank degrees per dial unit → **1 crank revolution = 1 dial revolution** |
 | `TOL` | `2.2` | Sweet spot half-width in dial units (zone is 4.4 units ≈ 7.9° wide) |
 | `cfg.maxEngage` | `25` | Max speed to latch — 25 units/**sec** ≈ **90°/sec**. Per-run, so it lives in `Mods.buildCfg`, not `main.lua` |
@@ -73,8 +75,14 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 
 ### Title
 Full-screen background plate (`source/images/title-screen-bg.png`, `Art.titleBg`) blitted at
-0,0, then the rotating dial (r=62 at 200,126) + big `SAFU` logotype + `Ⓐ CRACK IT` drawn on
-top of it. The crank already ticks here, so the mechanism is alive before the run starts.
+0,0, then the rotating dial (r=62 at 200,126) + big `SAFU` logotype + two calls to action drawn
+on top of it. The crank already ticks here, so the mechanism is alive before the run starts.
+
+- **Ⓐ CRACK IT** — a normal run: three modifiers rolled, three minutes on the clock.
+- **Ⓑ TUTORIAL** — the scripted pair of untimed runs, below.
+
+The two pills are **sized to their own labels** (`ctaWidth` / `drawCta`) rather than to a fixed
+width, so the row stays centred and balanced if either label ever changes.
 
 `sounds/title.wav` (`titleBgm`, volume `0.35`, 93.6 s) loops under it. `Sfx.titleAudio()` starts
 it — on cold boot and on every route back to the title — and always from the top; `Sfx.bgmStart()`
@@ -125,8 +133,81 @@ no smaller weight to fall back to, so names must stay at or under 13 characters.
 `Run.mods` is rolled in `startGame()` via `Mods.roll(3)`, and `Mods.buildCfg` turns the set into
 `Run.cfg` — the tunables the run plays by. Effects and their visuals are both implemented (§12b).
 
-**There is no progress indicator during play.** The player tracks their own progress from the
+**There is no progress indicator during normal play or the BLACKOUT tutorial.** The player tracks their own progress from the
 audio/visual cues. `Ⓐ Open?` is therefore a genuine gamble.
+
+### Tutorial
+
+**Ⓑ on the title screen.** Two scripted runs, in order, both **untimed** — the clock is drawn as
+`--:--.--` and never moves, so nothing can end a tutorial run except opening the safe.
+
+| Step | Modifiers | Teaches |
+|---|---|---|
+| 1 | **none** | The dial on its own: turn, feel the detents, hear the latch |
+| 2 | **BLACKOUT** only | One modifier, alone, so it is the only new thing to read |
+
+**The right column guides the player.** Lesson 1 replaces the empty modifier area with one
+148×194 scooped plate at (226,20), using the existing card fonts and checkered shadow.
+`TUTORIAL 1/2` and `No timer. Take your time.` frame a live instruction and a `0 / 3 SPOTS FOUND`
+readout. This is the only lesson that reveals progress:
+
+| Event / progress | Instruction |
+|---|---|
+| Start | `FIND A SWEET SPOT` — turn clockwise slowly; a loud click and dial shake mean a sweet spot; find 3 to open |
+| First latch | `NICE! ONE FOUND` — turn counterclockwise slowly and listen for another loud click |
+| Second latch | `ONE MORE TO GO` — clockwise again, slowly; listen for one last loud click |
+| Third latch | `YOU FOUND ALL 3!` — stop turning the crank and press A to open |
+| Graze | `TRY A SLOWER TURN` — the turn was too fast and progress reset; try clockwise more slowly |
+| Overspeed | `EASY DOES IT` — turning too fast makes you start over; turn clockwise slowly to find the first spot |
+| Early A | `NOT READY YET` — opening too soon resets progress; find all 3 spots first, starting clockwise slowly |
+
+The tutorial calls the goals **sweet spots**, and teaches the loud click and dial shake that
+identify one. It uses full sentences and small encouragements instead of mechanism jargon or
+requiring the player to interpret the `K-CHIK!` sound-effect lettering.
+
+Error instructions remain until the next successful latch (or another error), so the player can
+read them at their own pace. The count follows the real tumbler state; an error returns it to
+zero even if it happened before the first latch. Pausing and docking preserve the instruction.
+The panel draws after manga SFX so latch lettering cannot cover the instructions.
+
+Lesson 2 keeps its **BLACKOUT card** in the top slot and fills the two slots below with a
+148×126 instruction plate headed `TUTORIAL 2/2`: turn clockwise slowly, turn the other way after
+clicks 1 and 2, press A on click 3, and start clockwise again if progress resets. The BLACKOUT
+card above explains that it is too dark to see and to listen for loud clicks. These instructions are
+**static**, including on hits, errors and completion: the player must learn to count by ear.
+They appear in the lit opening and through the flashlight with the card once it turns on;
+the existing fade and dark beat still hide the whole room. No dial or live progress cue is
+added to BLACKOUT.
+
+`source/tutorial.lua` owns copy, error feedback and cached panel images. Lesson 1 changes its
+image only on a latch or error; lesson 2 is baked into the run background. Text layout is never
+repeated per frame. `startGame` clears tutorial feedback for every entry into a new run.
+
+The win screen carries the sequence:
+
+- Step 1 cleared → the panel says `TUTORIAL / 1 OF 2` and **Ⓐ says NEXT**, which starts step 2.
+- Step 2 cleared → the panel says `TUTORIAL / 2 OF 2` and **Ⓐ says NEW GAME**, which rolls a
+  normal run — the same thing Ⓐ on the title screen does. Finishing the tutorial therefore costs
+  no extra press.
+
+**Ⓐ is labelled for what it will actually do, three ways:** `NEXT` while a tutorial step is left,
+`NEW GAME` on the last step, and `AGAIN` outside the tutorial. `AGAIN` on the last step would
+promise a replay of the BLACKOUT run and deliver a random one.
+
+`TUTORIAL` is the step table and `tutorialStep` is nil for every normal run. **`startGame` clears
+`tutorialStep`, and `startTutorial` sets it after the call** — so no other entry point (the debug
+picker, Ⓐ on a win, Ⓑ to the title) has to remember to reset it, and a stale step cannot leak into
+a normal run.
+
+`Run.untimed` is the flag, also cleared by `startGame`. Only two things read it: `updatePlay`, which
+stops decrementing `remaining`, and `timerText()`, which draws dashes. **Dashes, not a frozen
+`03:00.00`** — a clock that is not moving reads as a bug, one that is not there reads as the rule
+it is. Nothing else in the game special-cases an untimed run: `remaining` keeps its full value, so
+the win panel and the timeup check need no changes.
+
+Losing a tutorial step is not reachable (untimed, and BLACKOUT has no lose condition), but Ⓐ on the
+lose screen restarts **the same step** rather than rolling a random run, so the path is not a trap
+if a future step adds a modifier that can end a run.
 
 ### Win
 1. Screen shake + `K-CHUNK!` + sweet sound; BGM stops.
@@ -203,24 +284,46 @@ Gameplay pauses (**the timer does not advance**) and `UNDOCK THE CRANK` is shown
 
 ## 6. Sweet spot detection
 
-The dial **starts at a random position each run** (`rawPos = math.random(0, 99)`), and the three
-targets are then generated relative to it: 3 random values `0–99`, each **≥18 units from the
-starting position and from each other**.
+**Only one real sweet spot exists at a time.** The dial starts at a random position
+(`rawPos = math.random(0, 99)`). `spawnTarget()` calls `Spots.pick` to choose the active `target`
+uniformly from the integer positions 0–99 that are **at least 18 dial units from the current
+dial position**, measured around the circle. With DECOY, it must also be at least 18 units from
+the fixed fake spot. A real latch discards this target and spawns the next one from the newly
+snapped dial position. After the final latch, `target` is nil. FOUR TUMBLERS changes the required
+count to four; it does not place more targets on the dial at once.
 
-Keeping targets clear of the start stops a tumbler spawning under the player for a free hit. It is
-measured from the *random* start rather than from `0` on purpose — anchoring it to `0` left a fixed
-126° band of the dial (83→17) that could never hold a sweet spot in any run, which was learnable
-and skippable. With the start randomised, the excluded band moves every run and every position on
-the dial is live across runs.
+`Spots.pick` lists the valid positions in one bounded 100-position pass and chooses one. Two
+18-unit exclusion arcs cannot cover the circle, so a candidate always exists. There is no
+retry limit, placement failure, or silent loss of a modifier. The exclusions move with the dial,
+so no fixed sector of the dial becomes permanently safe to skip.
+
+**DECOY is a fixed landmark.** At run start, its position is chosen first, at least 18 units from
+the starting dial. All later real targets avoid it. Its position and armed state persist across
+latches and resets; finding or ignoring it does not spawn a new real spot. Thus FOUR TUMBLERS +
+DECOY means four real latches to earn, one at a time, with one recurring fake spot alongside them.
+It does not guarantee exactly five sounds: the fake may be missed or crossed repeatedly.
+
+**A loss of progress starts a fresh search.** A graze, overspeed, or early handle pull after one
+or more real latches clears the count and generates a new first target away from the current
+dial. Previously found real positions are not replayed. Required directions and the decoy stay
+the same for the run. At zero progress, errors keep the existing target so spinning or pressing
+A cannot repeatedly reroll the search. A zero-progress graze stays disarmed until leaving its
+zone; a newly spawned distant target is armed immediately.
+
+WANDERING moves only the active real target while the dial is still. With DECOY it reflects at
+18-unit clearance from the fixed fake, so the real and fake zones cannot merge. Without DECOY,
+the target can drift freely around the circle. Drifting under a stationary dial still cannot
+latch until the player actually turns the crank.
 
 Per frame, in order:
 
-0. `tumbler > 3` → **stop**. Once all three are latched the tumbler logic is skipped entirely,
-   so cranking is consequence-free while you decide whether to pull the handle.
-1. `speed > RESET_SPEED` → reset progress to tumbler 1, `RESET!`. *(§7)*
+0. `speed > RESET_SPEED` → reset progress to tumbler 1, `RESET!`. This still applies after
+   all three are found, which is why the tutorial says to stop cranking before pressing A. *(§7)*
+1. `tumbler > cfg.tumblers` → **stop** all sweet spot detection, including the decoy.
+   Otherwise check the fixed decoy, then the current real target below.
 2. Not inside `±TOL` of the current target → **re-arm** and stop.
 3. Not armed → stop. *(prevents re-triggering while sitting inside the zone)*
-4. `speed < 0.03` → stop. *(dead zone; can't latch a stationary dial)*
+4. `speed < DEAD_SPEED` (1.5 units/sec) → stop. *(can't latch a stationary dial)*
 5. Wrong direction → stop.
 6. `speed > MAX_ENGAGE_SPEED` → **graze**. *(§7)*
 7. **Hit.**
@@ -229,8 +332,9 @@ On a hit:
 - The dial **snaps exactly onto the target** (via `posOffset`), so it lands on a clean number.
 - 220 ms decaying screen shake (`sin`/`cos`, amplitude 4.5 → 0).
 - `sweet.wav` + a `K-CHIK!` manga SFX placed randomly around the dial.
-- Advance to the next tumbler; if it happens to be within `TOL` of where you are, start
-  disarmed so the player must leave and re-enter the zone.
+- Advance to the next tumbler and spawn a new real target at least 18 units away, armed.
+  On the final latch, remove the real target and stop fake clicks too. The existing overspeed
+  reset still applies until the player presses A.
 
 ---
 
@@ -248,12 +352,14 @@ harder", with no way to tell it apart from a tuning change.
 You crossed the sweet spot too fast to catch it. Plays a low, quiet, half-rate tick + `TOO FAST`,
 disarms until you leave the zone, and **resets progress if you were past tumbler 1**.
 This is the "you can feel it but you blew past it" moment — the reason to slow down.
+If progress was lost, the fresh first target is armed; at zero progress the grazed target stays
+in place and disarmed until the player leaves its zone.
 
 **Reset — `speed > RESET_SPEED` anywhere.**
 Cranking wildly resets progress to tumbler 1 with `RESET!`. Punishes spinning the crank to brute
 force the dial.
 
-At tumbler 1 neither gate can cost progress (there is none), so early searching stays free.
+At tumbler 1 neither gate can cost progress (there is none), and neither rerolls the target.
 
 ---
 
@@ -312,17 +418,62 @@ half is reserved above the first row so it cannot crowd it.
 
 | Sound | Source | Notes |
 |---|---|---|
-| `tick` | `tick.wav` | **6 round-robin voices** so fast cranking never cuts itself off. Rate `0.94 + speed*0.05` + random jitter, volume `0.26 + speed*0.06` — faster cranking is higher and louder |
+| `tick` | `tick.wav` | **6 round-robin voices** so fast cranking never cuts itself off. Rate `0.94 + speed*0.05` + random jitter, volume `gain("tick") * (1 + speed*0.2308)` — faster cranking is higher and louder |
 | `sweet` | `sweet.wav` | Full volume, unpitched. The K-CHIK |
-| `graze` | `tick.wav` @ rate 0.45, vol 0.5 | Deliberately a *dulled* tick — the near miss |
+| `graze` | `tick.wav` @ rate 0.45 | Deliberately a *dulled* tick — the near miss |
 | `handle` | `sweet` then `cleared.wav` after 1 s | The opening sequence |
 | `locked` / `fail` / `reset` / `start` | square-wave synths | Two- and three-note descending motifs |
-| `bgm` | `bgm.wav` @ vol 0.12 | Loops during play, stops on win/lose |
+| `bgm` | `bgm.wav` | Loops during play, stops on win/lose |
 | `titleAudio` | — | Every route back to the title calls it: it silences the run's music and is the single place a title track should start |
 | `uiConfirm` | `ui-confirm.wav` | Going *in*: opening the menu, entering the catalogue, Quit |
 | `uiBack` | `ui-cancel-back.wav` | Coming *out*: Resume, leaving the catalogue, Ⓑ to the title |
 | `uiHover` | `ui-hover.wav` | The cursor moving between menu rows, and catalogue page flips |
 | `flashlight` | `flashlight-turn-on.mp3` | BLACKOUT's opening only. Never ducked. Trimmed to 0.32 s; two clicks 210 ms apart |
+
+#### The mix — one table, `Sfx.mix`
+
+**Every level the game can emit lives in `Sfx.mix` and nowhere else.** Nothing in `main.lua` or
+`modifiers.lua` sets a volume any more; they name a sound or a track and the mix supplies the
+level. That is what makes the debug **Audio** page possible — one table to edit, live, and hear.
+
+Levels are stored **in dB on a 0..40 scale: 0 dB is silence, 40 dB is the device maximum.**
+
+    linear = 10 ^ ((dB - 40) / 20)          0 dB -> 0, forced silent
+
+This is **not dBFS.** The SDK exposes no gain above unity on `sampleplayer` / `fileplayer` /
+`synth:playNote`, so full scale is a hard ceiling and the useful way to express a level is as a
+height above silence, not an attenuation below a ceiling you can never exceed. The scale runs
+**one display dB per real dB**: 40 dB is unity, 20 dB is −20 dBFS, and 0 dB sits at −40 dBFS,
+which is silent on the device speaker and is forced to a hard zero anyway. A sound still too quiet
+at 40 dB has to be fixed in the asset (see `ui-cancel-back`, below).
+
+**`Sfx.gain(id)` is the only way to read a level.** Nothing outside `sound.lua` touches `Sfx.mix`
+except the debug page.
+
+| Entry | dB | Entry | dB |
+|---|---|---|---|
+| `tick` | 28.4 | `footstep` | 40.0 |
+| `graze` | 34.0 | `flashlight` | 40.0 |
+| `sweet` | 40.0 | `uiConfirm` | 40.0 |
+| `decoy` | 40.0 | `uiBack` | 40.0 |
+| `wrong` | 24.0 | `uiHover` | 33.0 |
+| `locked` | 29.6 | `bgmTitle` | 30.8 |
+| `reset` | 28.4 | `bgmDefault` | 21.6 |
+| `fail` | 29.6 | `bgmClub` | 40.0 |
+| `handle` | 40.0 | `bgmNight` | 28.4 |
+| `cleared` | 33.0 | `start` | 29.6 |
+
+**These defaults are not precious.** They are the pre-mixer levels converted across; the debug Audio
+page exists to replace them by ear.
+
+Two levels are **multiplied**, not replaced, so an entry set to 0 dB really is silent:
+
+- `tick` scales its speed term (`* (1 + s*0.2308)`) instead of adding to it. 0.2308 reproduces the
+  old `+0.06`-at-full-speed curve exactly.
+- `sweet` / `decoy` multiply their mix level by `mechVol`; TOO LOUD skips both voices entirely.
+
+`Sfx.mixList` is the same set again as an **ordered, labelled list** — that is what the debug page
+walks. The four beds carry a `track` field; everything else is a one-shot.
 
 UI sounds are keyed to **intent, not to the button**. Ⓐ on `Resume` plays the *back* sound because
 it leaves the menu; Ⓑ opening the menu plays *confirm* because it goes in. `Ⓐ OPEN?` during play is
@@ -446,9 +597,9 @@ the dial uses the 10px cut.
 
 ---
 
-## 12. Modifiers — designed, not built
+## 12. Modifiers
 
-Twelve modifiers. **Every run draws 3.** None are implemented; this section is the spec.
+Nine active modifiers. **Every normal run draws 3.** Their effects are implemented below.
 
 ### The set
 
@@ -457,12 +608,36 @@ Twelve modifiers. **Every run draws 3.** None are implemented; this section is t
 | 1 | **BLACKOUT** | Perception | `channel` | `eye` + slash | The dial is not drawn. Crack it by ear |
 | 2 | **TOO LOUD** | Perception | `channel` | `volume-high` | Ticks ducked to near-silent under loud club BGM |
 | 6 | **SCRAMBLED** | Memory | — | `arrow-left-right` | `dirs` randomised per tumbler instead of `{1,-1,1}` |
-| 7 | **FOUR TUMBLERS** | Memory | `time` | `lock` | 4 sweet spots instead of 3 |
-| 8 | **WANDERING** | Memory | — | `compass` | Targets drift, but only while you are *not* cranking. **Drift ≤ `Mods.MAX_DRIFT` (5 units/sec)** |
-| 9 | **DECOY** | Risk | — | `help` | A fake 4th spot with a duller, learnable K-CHIK |
+| 7 | **FOUR TUMBLERS** | Memory | `time` | `lock` | 4 real latches instead of 3, generated one at a time |
+| 8 | **WANDERING** | Memory | — | `compass` | The active real target drifts while you are *not* cranking, reflecting before it reaches the decoy. **Drift ≤ `Mods.MAX_DRIFT` (5 units/sec)** |
+| 9 | **DECOY** | Risk | — | `help` | One fixed fake spot: a click ending in a buzz, no dial shake, no progress |
 | 10 | **ONE SHOT** | Risk | `fail` | `skull` | A wrong Ⓐ ends the run instead of resetting progress |
 | 11 | **GUARD** | Event | `fail` | `bell` | Footsteps: stop cranking within 3 s or you're caught |
-| 12 | **NITRO** | Body | `fail` | `flask` | Accelerometer: keep the device level or it goes off |
+| 12 | **NITRO** | Body | `fail` | `flask` | Tilt left/right to keep the liquid from spilling; a spill ends the run |
+
+### Player-facing descriptions
+
+Modifier names keep their character; descriptions explain what changes or what to do in plain
+language. These are the exact two-line descriptions shared by the door cards, pause catalogue
+and debug picker. Each line fits the narrowest text column (110 px) in Nontendo-Light:
+
+| Modifier | First line | Second line |
+|---|---|---|
+| BLACKOUT | It is too dark to see. | Listen for loud clicks. |
+| TOO LOUD | The clicks are silent. | Watch for dial shakes. |
+| SCRAMBLED | Try both directions | for each sweet spot. |
+| FOUR TUMBLERS | Find 4 sweet spots | before pressing A. |
+| WANDERING | Sweet spots move | when you stop turning. |
+| DECOY | Fake clicks end in a | buzz, with no shake. |
+| ONE SHOT | Press A too soon | and you lose. |
+| GUARD | When you hear steps, | stop for 3 seconds. |
+| NITRO | Tilt to keep the | liquid from spilling. |
+
+The clicks in this copy are the sweet-spot sounds taught in the tutorial, not the quiet ticks
+while the crank turns. TOO LOUD mutes those sounds, so it directs attention to the dial shake.
+DECOY explains both clues to its fake spot. GUARD asks for a full three-second stop, and NITRO
+asks the player to balance the liquid rather than hold the device still. DECOY names the audible
+buzz introduced with the one-at-a-time target change.
 
 **Icons are chosen and exported.** 14x14, 1-bit, transparent: eight hand-drawn on the 14 grid,
 four from [Pictogrammers Memory](https://github.com/Pictogrammers/Memory). Assets live at
@@ -471,9 +646,9 @@ four from [Pictogrammers Memory](https://github.com/Pictogrammers/Memory). Asset
 `images/README.md` documents the pipeline. Contact sheet: `images/hud-modifier-icons.png`.
 
 `source/modifiers.lua` carries the catalogue (id, name, sub, icon, axis, tags), the icon loaders,
-and the pair-scoring rules below as `Mods.pairClass` / `Mods.score` / `Mods.roll`. It is **data and
-art only — no modifier mechanic is implemented.** Its rule tables reproduce the 38 banned / 38 hard
-/ 144 normal split stated below; change the two together.
+the pair-scoring rules as `Mods.pairClass` / `Mods.score` / `Mods.roll`, and per-run configuration
+through `Mods.buildCfg`. Effect behavior lives in `main.lua`. Its rule tables reproduce the
+19 banned / 24 hard / 41 normal split stated below; change the two together.
 
 ### Modes and combinations
 
@@ -526,16 +701,17 @@ All three together scores 6 — the signature hard-mode draw.
 | TOO LOUD + SCRAMBLED | SCRAMBLED's wrong-direction tell is audio-only, so it gets buried |
 | BLACKOUT + WANDERING | Targets moving with no visual reference |
 | SCRAMBLED + WANDERING | Unknown direction *and* a moving target |
-| FOUR TUMBLERS + WANDERING | Four drifting targets on one clock |
+| FOUR TUMBLERS + WANDERING | Four successive drifting targets to catch on one clock |
 | FOUR TUMBLERS + GUARD | More work against a clock that freezes |
 | DECOY + ONE SHOT | A poisoned count where a wrong press is fatal |
 
 #### DECOY's two tells are load-bearing
 
-DECOY is only fair because it has one tell per channel — the duller `sweet-fake.wav` tail, and the
-missing screen shake. **BLACKOUT kills the visual one; TOO LOUD kills the audio one.** Either alone
-leaves a tell and is merely hard. Both together would leave none, which is why that pair is banned
-on its own account anyway.
+DECOY has one tell per channel — the distinct buzz at the end of `sweet-fake.wav`, and the
+missing screen shake. **BLACKOUT removes the visual tell; TOO LOUD mutes the audio tell.** Either
+alone leaves one cue, so both pairs remain allowed and classified hard. BLACKOUT + TOO LOUD is
+still banned. The previous bass-only fake was too hard to distinguish on the user's device;
+the new buzz is a concrete sound-design change, not a claim that measurements prove fairness.
 
 #### BLACKOUT and other UI tells
 
@@ -544,10 +720,9 @@ Under BLACKOUT only the timer and the three cards are lit, so any tell drawn els
 - **ONE SHOT + BLACKOUT is allowed.** The trembling Ⓐ element is invisible and that tell is
   deliberately sacrificed — ONE SHOT's rule is stated on its card, and the tremble is flavour
   rather than information the player needs to survive.
-- **DECOY + BLACKOUT leaves exactly one tell.** With no `K-CHIK!` text and no shake, a real latch
-  and a fake one differ *only* in the sound tail — the clean ring versus the 92 Hz dud at 105 ms.
-  That difference is real and learnable, so the pair stays hard rather than banned, but it is the
-  purest test of the audio tell in the whole set.
+- **DECOY + BLACKOUT leaves exactly one tell.** With no `K-CHIK!` text and no shake, the player
+  listens for the fake click's short buzz and keeps turning through it. Only real clicks advance
+  progress. Device listening must validate the new contrast.
 - **NITRO + BLACKOUT is banned** (above), which is what removes the contrast problem entirely.
   The water layer never has to render against black.
 
@@ -583,35 +758,72 @@ GUARD wants `ambience.wav` looping, so all three would stack.
 That means there is exactly **one background slot**, chosen once at run start — no mixing, no
 ducking between tracks, no priority logic:
 
-| Active modifier | Track | Volume |
-|---|---|---|
-| TOO LOUD | `nightclub.wav` | ~0.50 — it is the point |
-| GUARD | `ambience.wav` | ~0.45, under the footsteps |
-| neither | `bgm.wav` | 0.12 (unchanged default) |
+| Active modifier | Track | Mix entry | Level |
+|---|---|---|---|
+| TOO LOUD | `nightclub.wav` | `bgmClub` | 40.0 dB — full playback volume |
+| GUARD | `ambience.wav` | `bgmNight` | 28.4 dB, under the footsteps |
+| neither | `bgm.wav` | `bgmDefault` | 21.6 dB |
 
-`Sfx.bgmStart()` takes a track and a volume, or the existing single `fileplayer` swaps its file
-with `load()`. Either way the run picks one and never changes it.
+`Sfx.bgmStart(track)` takes **only a track**; the single `fileplayer` swaps its file with `load()`
+and looks the level up in `Sfx.mix` through an internal track→entry map. `Mods.buildCfg` therefore
+names `bgmTrack` and no longer carries a `bgmVol` — a volume in two places is a volume that drifts,
+and the debug Audio page has to own all of them.
 
 **BLACKOUT needs no change here.** Its tell is the mechanism audio, and the default bed at 0.12
 does not mask it — measured below.
 
-### Measured audio headroom
+### Nightclub loudness
 
-Checked because under BLACKOUT + DECOY the sound tail is the *only* tell in the game.
+TOO LOUD plays at `bgmClub = 40.0` (unity). The nightclub master uses +12 dB gain
+and a −0.3 dB peak limiter (5 ms attack, 30 ms release, latency compensated).
+Measured loudness is **−7.6 LUFS**, up 1.9 LU from the previous −9.5 LUFS master;
+true peak is **−0.3 dBFS**. Stronger limiting makes the bed denser. The loop retains
+1,303,949 samples at 44.1 kHz, mono, 16-bit PCM. The original MP3 is untouched.
+Regenerate with:
 
-| Signal | Level | Notes |
-|---|---|---|
-| DECOY dud, 80–110 Hz peak | **−26.7 dB** | the tell |
-| Real latch, same band | −40.6 dB | **14 dB apart** — clearly distinguishable |
-| `bgm.wav` in-band @ 0.12 | −34.6 dB | dud sits ~8 dB *above* it — no masking |
-| `nightclub.wav` in-band @ 0.5 | −22.7 dB | buries the dud, which is why TOO LOUD + DECOY leans on the visual tell |
-| `footstep.wav` peak | −4.1 dB | punchy, sits well clear of ambience |
+```sh
+ffmpeg -y -i sound-fxs/nightclub-bgm.mp3 -af 'aformat=channel_layouts=mono,aresample=44100,volume=12dB,alimiter=limit=0.966051:attack=5:release=30:level=false:latency=true' -ar 44100 -ac 1 -c:a pcm_s16le source/sounds/nightclub.wav
+```
 
-`ambience.wav` as delivered peaked at −30.2 dB — nearly inaudible at any sane fileplayer volume —
-so the asset was normalised +20 dB rather than fought with a volume multiplier.
+TOO LOUD **completely mutes real and fake latch voices**. Visual feedback carries
+hit confirmation. Every run explicitly sets the latch mute flag, restoring normal
+latches outside TOO LOUD. Ticks, graze and wrong-direction cues retain the 0.10 duck.
+The handle opening sound is separate and retains its normal level.
+Perceived loudness still needs a listening check on the device.
 
-Anyone retuning `sweet-fake.wav` should re-check the first two rows: 14 dB of separation in the
-80–110 Hz band is what makes DECOY fair.
+### Decoy sound: click followed by a buzz
+
+The original real and fake files matched for their first 105 ms and differed mainly in bass.
+The user's physical-device feedback was that they were almost indistinguishable. The earlier
+claim that a 14 dB gap in the 80–110 Hz band proved fairness was unsupported by that experience;
+frequency measurements alone do not establish what the player can hear.
+
+`source/sounds/sweet-fake.wav` now uses the curated `sound-fxs/fake-obvious.wav` as its base and
+adds a short **falling midrange buzz**. The real `sweet.wav` and curated originals are unchanged.
+The first click still sounds mechanical, but the fake has an explicit audible ending to learn.
+It is one click followed by a buzz, rather than two full clicks that could muddle the count.
+
+| Parameter | Value |
+|---|---|
+| Buzz window | 165–305 ms into the fake sound (140 ms duration) |
+| Fundamental | Linear sweep from 550 to 350 Hz |
+| Harmonics | Fundamental / 3rd / 5th, relative weights 1 / 0.45 / 0.20 |
+| Envelope | 8 ms attack, 32 ms release, half-cosine edges |
+| Added buzz peak | 0.18, before PCM quantization |
+| Output format | Mono 44.1 kHz, 16-bit PCM, 20,584 frames (0.466757 s) |
+| Whole sample peak / RMS | −2.66 / −22.68 dBFS; zero clipped samples |
+
+The buzz window has 25.44 dB more energy above 600 Hz than the corresponding real-click tail.
+This measures the files, not the Playdate speaker or perceived difficulty. **Device listening
+still needs to establish whether the cue is clear enough during BLACKOUT.** That pair stays
+allowed with its existing hard classification; no modifier bans or scoring changed.
+
+Rebuild deterministically with `python3 scripts/build-decoy-sound.py`. Add
+`--comparison /tmp/safu-decoy-comparison.wav` to export the real click, 0.7 seconds of silence,
+then the new fake. The buzz is baked into the existing sample, so the same player, mixer level,
+stop behavior, and TOO LOUD mute cover the entire cue; no delayed callback can outlive it.
+Pause → Debug → Audio has adjacent LATCH and DECOY rows, with A to replay. Compare them from an
+ordinary or BLACKOUT run: TOO LOUD deliberately mutes both, including their auditions.
 
 ### 12b. Effects layer — implemented
 
@@ -622,7 +834,7 @@ needs a special case at its call site.
 | Field | Default | Set by |
 |---|---|---|
 | `drawDial` `showEffects` `shake` | `true` | BLACKOUT → all false *(renderer reads these; not yet consumed)* |
-| `bgmTrack` `bgmVol` `mechVol` | `sounds/bgm` `0.12` `1.0` | TOO LOUD → nightclub/0.50/0.18 · GUARD → ambience/**0.26** |
+| `bgmTrack` `bgmVol` `mechVol` | `sounds/bgm` `0.12` `1.0` | TOO LOUD → nightclub/1.00/0.10 · GUARD → ambience/**0.26** |
 | `tumblers` | `3` | FOUR TUMBLERS → `4` |
 | `randomDirs` | `false` | SCRAMBLED |
 | `drift` | `0` | WANDERING → `Mods.MAX_DRIFT` (5) |
@@ -634,9 +846,10 @@ needs a special case at its call site.
   `cfg.tumblers` and `Run.dirs`. SCRAMBLED also fires `Sfx.wrongDir()` — a soft low thud, once per
   entry into a zone, meaning *it is here but not this way*. Audio only, by design.
 - **DECOY** — `checkDecoy`, run alongside the real tumblers. Latches like a real spot, plays
-  `sweet-fake.wav`, shows the same `K-CHIK!`, and **never sets `shakeStart`**. The dud in the tail
-  and the missing shake are the only two tells.
-- **WANDERING** — `driftTargets`, only while the dial is under `DEAD_SPEED`. Unlatched spots only.
+  `sweet-fake.wav`, shows the same `K-CHIK!`, and **never sets `shakeStart`**. The buzz in the tail
+  and missing shake are its two tells. A fixed position is guaranteed when DECOY is active.
+- **WANDERING** — `driftTargets`, only while the dial is under `DEAD_SPEED`. The active real
+  target moves at 5 units/sec, reflecting at 18-unit clearance from the fixed decoy.
 - **GUARD** — `updateGuard`. A footstep every 5–9 s, then `GUARD_GRACE_MS` (3000) to stop. Still
   moving when the grace expires and the run ends. The grace is what makes an audio-only hard-fail
   fair. The ambience bed sits well back at **0.26** so the steps cut through it: missing one is a
@@ -662,7 +875,8 @@ Pause menu → **Debug**, which is a branch rather than a page:
     Menu
      └ Debug
         ├ Screens      Safe open · Time's up · Caught · Boom
-        └ Modifiers    force any 3
+        ├ Modifiers    force any 3
+        └ Audio        live mixer over Sfx.mix
 
 **Screens** drops straight into a finished end screen. It builds the *real* panel — the clock and
 tumbler count it reads are already set — so what you inspect is the shipping screen, not a mock of
@@ -686,6 +900,54 @@ rather than refusing it.
 
 `startGame(forced)` takes the override; with no argument it rolls as usual, so the normal path is
 untouched.
+
+### Debug audio mixer
+
+Pause menu → **Debug → Audio**. Every entry in `Sfx.mix`, one per row, edited in dB and auditioned
+on the spot.
+
+    ┌──────────────────────────────────────────────┐
+    │ AUDIO                                   1/20 │
+    │ ─────────────────────────────────────────────│
+    │ ☞ TICK        ████████████░░░░░░    28.4 dB  │
+    │   GRAZE       ██████████████░░░░    34.0 dB  │
+    │   LATCH       ██████████████████    40.0 dB  │
+    │   …                                          │
+    │ ─────────────────────────────────────────────│
+    │ DIAL DETENT                 Sfx.mix.tick = 28.4│
+    │ L/R LEVEL   Ⓐ PLAY   Ⓑ BACK                  │
+    └──────────────────────────────────────────────┘
+
+- **Up/Down** move between sounds (wraps). 20 entries do not fit on 240px, so the list shows
+  **8 rows** and scrolls to keep the cursor in view. Moving **silences** whatever the last row was
+  playing — otherwise a bed keeps looping under the next entry.
+- **Left/Right** move the level and **re-trigger the sound immediately**. Held, it ramps: 300 ms
+  before the repeat starts, then a step every 55 ms — and after 1.2 s of holding, **0.5 dB a step**
+  instead of 0.1, because 400 steps at 55 ms is a 22 second sweep.
+- **Ⓐ** plays the selected entry again. No `uiConfirm` here — it would mask what Ⓐ is playing.
+- **Ⓑ** hands the bus back and returns to Debug.
+
+**The scale is the mix's own: 0.0 to 40.0 dB in 0.1 dB steps, 0 dB being silence.** The page edits
+`Sfx.mix` directly — no conversion, no snapping, so the number on screen is the number in the table.
+The grid index is held as an integer tenth so a run of presses cannot drift the value.
+
+**The page owns the whole audio bus while it is up** (`Sfx.auditionBegin` / `auditionEnd`). It stops
+the run's bed on entry so a level is judged on that one sound and nothing else, and restarts it —
+still ducked, since the pause menu is still up — on the way out. Previews call the **real** `Sfx`
+functions, so what you hear is exactly what the game will play.
+
+One-shots and beds are re-triggered differently: a bed is already looping, so it only needs its gain
+moved; a one-shot has to be **re-struck**, on a slower clock (260 ms) than the steps land on, or
+holding the button is just a burst of noise. A last strike fires on **release**, so the value you
+stopped on is always the one you last heard.
+
+The footer prints the selected entry as `Sfx.mix.<id> = 28.4` — the exact line to paste back into
+`sound.lua` once a level is settled on. **Nothing here persists**; the page is a listening tool, not
+a settings screen.
+
+**All of `Mixer`'s state, constants and helpers hang off one table.** `main.lua`'s main chunk sits
+close to Lua's **200-local ceiling** (it was hit, at 220, on the first pass) — spelling this page
+out as a dozen file locals does not compile.
 
 ### Menu audio
 
@@ -835,17 +1097,13 @@ only the death is delayed. X axis only, so it is a left/right balance. Waterline
 `y = 210` and the fill is sparse: it is a hazard overlay, not a curtain, and burying the card
 column would hide the run's own rules.
 
-> **A hang that only four tumblers could reach.** `genTargets` used to guess positions and reject
-> the bad ones. That is fine at three and a trap at four: the start plus four targets each wanting
-> 18 units of clearance needs 90 of the dial's 100, so valid arrangements are rare enough that the
-> loop effectively never terminates. Every FOUR TUMBLERS run froze. It raised no Lua error, so
-> `pcall` could not see it and the simulator simply stopped — which is exactly why it survived a
-> clean build, a clean boot and three earlier screenshot runs that happened never to roll it.
->
-> It now hands out `count+1` gaps that each clear the minimum and sum to exactly 100, then walks
-> them round the dial: one pass, no loop, cannot fail. Verified at 0 violations in 20,000 rolls at
-> both counts. The result is shuffled, or the tumblers would always appear in rotational order
-> from the start — a pattern worth learning.
+> **Why the game now spawns one real spot at a time.** The original rejection sampler could
+> freeze while placing four targets. Its replacement built all real targets from bounded gaps,
+> but left almost no room for DECOY's separate 18-unit spacing rule. In 10,000 four-tumbler runs
+> checked before this change, zero fake spots spawned; the card still appeared and its effect
+> silently disappeared. The current `Spots.pick` only has to avoid the current dial and fixed
+> decoy, so it always finds room. Regression checks cover complete runs and modifier interactions,
+> not just whether the initial generation terminates.
 
 **Still first-guess numbers.** Every constant here — cone radii and alphas, note speed and spawn
 rate, tremble frequency, waterline height, slosh stiffness and damping — was tuned against
@@ -877,23 +1135,26 @@ objects are allocated for something that can never be seen. The shake becomes mo
 half-rate tick, reset → `resetVoice`, wrong handle → `lockedVoice`, movement → `tick.wav`. Five
 events, five distinct sounds, no gaps. BLACKOUT is what the tick design was always for.
 
-**2 · TOO LOUD** — `nightclub.wav` loops loud; mechanism sounds duck via a `cfg.mechVolume`
-multiplier inside `Sfx.tick/sweetSpot/graze` (ticks ~0.1, K-CHIK ~0.35 so hits still cut through).
+**2 · TOO LOUD** — `nightclub.wav` loops loud; mechanism sounds duck via a `cfg.mechVol`
+multiplier of 0.10 inside `Sfx.tick/graze/wrongDir`. Real and fake latch sounds are
+completely muted; visual feedback confirms the hit.
 Adds a recurring **music-note SFX** (Pictogrammers *music-note*) that launches from the **top
 edge** at a random diagonal, left or right, flanked by `// \\` emphasis strokes.
 
-**6 · SCRAMBLED** — `cfg.dirs` randomised per tumbler. **No UI tell.** Ships with an *audio*
-wrong-direction cue only, since `if dir ~= need then return end` is currently silent.
+**6 · SCRAMBLED** — `Run.dirs` randomised per tumbler at run start. **No UI tell.** The wrong
+direction cue is audio-only. Spawning a new real target or resetting progress keeps these directions.
 
-**7 · FOUR TUMBLERS** — `cfg.tumblers = 4`; de-hardcodes `genTargets`, `cfg.dirs` length,
-`tryHandle`'s `tumbler == 4`, and `Art.drawDots` (currently 3 dots at `(i-2)*28`; needs
-`(i-(n+1)/2)*28`). No UI tell beyond the dots.
+**7 · FOUR TUMBLERS** — `cfg.tumblers = 4`; four real latches are required, generated one at a
+time by `spawnTarget`. Direction count, handle readiness and end-screen dots follow that count.
+The optional fixed decoy still exists alongside the one active real spot.
 
-**8 · WANDERING** — drift the current target only while `speed < ε`, ~2 units/sec. Invisible.
+**8 · WANDERING** — drift the active target while `speed < DEAD_SPEED`, at 5 units/sec. Invisible.
+With DECOY, reflect at its 18-unit clearance boundary so the two spots cannot overlap.
 
-**9 · DECOY** — a 4th fake target, same generation rules. Fires `sweet-fake.wav` and the **same**
-`K-CHIK!` text, but **no screen shake** and no tumbler advance. Two subtle tells, one per channel.
-Fires every time it is crossed properly, so it is a learnable landmark rather than a one-off trap.
+**9 · DECOY** — one guaranteed fixed fake target, chosen before the first real target. Fires
+`sweet-fake.wav` (click then buzz) and the **same** `K-CHIK!` text, but **no dial shake**, progress
+or direction advance. Fires again on a valid re-entry, so it is a learnable landmark. It survives
+progress resets in the same place. Once every real spot is found, it stops firing.
 
 **10 · ONE SHOT** — `tryHandle`'s failure branch jumps straight to lose, with a `CAUGHT` end
 screen. UI detail: the **Ⓐ Open? element trembles** — a fast, small, indefinitely repeating
@@ -933,11 +1194,60 @@ Score/best-time persistence, any story or characters, and no index pointer on th
       dial.lua      Art.*  — dial, vault door, dial well, timer plate, modifier cards,
                     manga SFX baking, progress dots, fonts, icons
       modifiers.lua Mods.* — the 12 modifiers, their icons, pair scoring. Data + art only
+      tutorial.lua  Tutorial.* — lesson prompts, error feedback, cached guidance plates
+      spots.lua     Spots.* — guaranteed active-target placement and drift around the fixed decoy
       images/modifiers/          12 standalone 14x14 icons
       images/mod-icons-table-14-14.png  the same 12 as an imagetable (loads as images/mod-icons)
-      sound.lua   Sfx.*  — samples, synths, BGM
-      sounds/     tick, sweet, sweet-fake, cleared, bgm, nightclub, ambience, footstep
-      pdxinfo     name=Safu, bundleID=com.vincent.safu
+      sound.lua   Sfx.*  — samples, synths, BGM, and Sfx.mix: every level in the game
+      sounds/     tick, sweet, sweet-fake (click + buzz), cleared, bgm, nightclub, ambience, footstep
+      launcher/   card.png 350x155 · icon.png 32x32 · launchImage.png 400x240
+      pdxinfo     name=Safu, bundleID=com.vincent.safu, imagePath=launcher
+
+Run `luajit tests/spots.lua` from the project root to check placement, complete three- and
+four-tumbler runs, fixed decoys, resets, SCRAMBLED, and WANDERING against the game logic.
+`scripts/build-decoy-sound.py` rebuilds the click-and-buzz sample; see §12 for its comparison option.
+
+---
+
+## 13b. Launcher art (`source/launcher/`)
+
+`pdxinfo`'s `imagePath=launcher` points the system at the folder; `pdc` converts each PNG to `.pdi`
+and copies the folder into the `.pdx`.
+
+| File | Size | Where it shows |
+|---|---|---|
+| `launchImage.png` | 400 × 240 | Full screen while the game loads, and the last frame of the launch animation |
+| `card.png` | 350 × 155 | The launcher carousel, in "cards" view |
+| `icon.png` | 32 × 32 | The launcher list, in "list" view |
+
+**The card and the launch image come from the art master, not from a live render.**
+`images/title-bg-14-vault-brick.png` (400 × 240, with an `@4x` companion) is the finished title
+composition — wall, vault, both robbers, dial, wordmark and CTA already in it.
+
+Rendering them out of the running game was the first attempt and it was wrong: `title-screen-bg.png`
+carries a **white knockout** where the live dial and wordmark get drawn, sized and positioned for
+the title screen's own layout. Re-laying those elements out for a 350 × 155 card leaves the knockout
+showing as an **empty contour** around the dial and behind SAFU. The master has no knockout, so it
+crops and scales cleanly.
+
+- **`launchImage.png` is the master, copied verbatim.** It is already exactly 400 × 240, and it
+  matches the title screen the game draws a moment later, so the hand-off has nothing to flash.
+- **`card.png` is the master scaled to 0.875, point-sampled.** 350 × 155 cannot hold the content
+  1:1 — SAFU tops out at y≈8 and the dial bottoms out at y≈190, 182px of content in a 155px box — so
+  the card takes `400 × 186 + 0 + 6` and scales it down.
+
+      magick title-bg-14-vault-brick.png -crop 400x186+0+6 +repage \
+             -filter Point -resize 350x155! -depth 1 card.png
+
+  **`-filter Point` is the whole trick.** Area-averaging a 1-bit halftone and re-dithering the result
+  (`-ordered-dither o4x4`) turns the vault's shading into speckle and the dial's numerals to mush;
+  thresholding instead (`-threshold 70%`) blows the shading out to flat white. Point sampling just
+  drops every eighth row and column, which keeps the dither texture and the line art crisp at the
+  cost of a few broken hairlines nobody sees at card size.
+- **`icon.png` is a purpose-drawn dial**, exported from the game with an offscreen-draw harness and
+  `playdate.simulator.writeToFile(image, path)` (simulator-only). Downscaling the real dial to 32px
+  turns the numerals and tick ring to mush, so the icon keeps only the silhouette: filled disc,
+  white inner ring, 8 ticks, centre dot.
 
 ---
 
@@ -962,6 +1272,8 @@ The cards were the cost: three concave-polygon fills each, plus `drawTextInRect`
 and the three modifier cards are drawn once into `bgImage` at `startGame()` and blitted. Only the
 dial (it rotates), the timer digits, the Ⓐ prompt and the manga SFX are live. `bgImage` is
 invalidated by setting it to `nil` — do that if anything static changes mid-run.
+The first tutorial's guidance is a separate cached image selected on progress/error changes;
+the BLACKOUT tutorial's static guide is baked alongside its modifier card.
 
 To measure: wrap `pd.update` in `pd.resetElapsedTime()` / `pd.getElapsedTime()`, write the average
 to a file with `pd.file.open`, and read it back from
@@ -976,10 +1288,12 @@ path *on the device*. Copy the build over the data partition:
 
     pdc source Safu.pdx
     pdutil /dev/cu.usbmodemPDU1_XXXXXXX datadisk
-    rsync -a --delete Safu.pdx/ /Volumes/PLAYDATE/Games/Safu.pdx/
-    find /Volumes/PLAYDATE/Games/Safu.pdx -name "._*" -delete
+    COPYFILE_DISABLE=1 rsync -rlt --exclude='._*' --exclude='.DS_Store' Safu.pdx/ /Volumes/PLAYDATE/Games/Safu.pdx/
     diskutil eject /Volumes/PLAYDATE
     pdutil /dev/cu.usbmodemPDU1_XXXXXXX run /Games/Safu.pdx
+
+Verify the copied build files against the local build before ejecting. This copy does not delete
+device files; any cleanup on the physical device needs the user's approval.
 
 The Playdate's port is the one named `cu.usbmodemPDU1_*`. Other `cu.usbmodem*` ports on the machine
 are different devices — `pdutil` accepts them and fails quietly. Piping `pdutil` into `tail` hides

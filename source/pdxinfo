@@ -4,3 +4,4 @@ description=Crack the safe with the crank.
 bundleID=com.vincent.safu
 version=0.1
 buildNumber=1
+imagePath=launcher

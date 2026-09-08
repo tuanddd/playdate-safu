@@ -3,6 +3,8 @@ import "CoreLibs/timer"
 import "sound"
 import "dial"
 import "modifiers"
+import "tutorial"
+import "spots"
 
 local gfx <const> = playdate.graphics
 local pd <const> = playdate
@@ -111,9 +113,19 @@ local function drawPerf()
 end
 
 local state = STATE_TITLE
+-- TUTORIAL. Two scripted runs off the title screen's Ⓑ, both untimed: the first
+-- teaches the dial with nothing in the way, the second adds BLACKOUT alone so the
+-- modifier is the only new thing to read. `tutorialStep` is nil for every normal
+-- run, and `startGame` clears it - so a tutorial step is set *after* the call,
+-- and no other entry point has to remember to reset it.
+local TUTORIAL <const> = {
+    { mods = {} },
+    { mods = { "blackout" } },
+}
+local tutorialStep = nil
 local rawPos, posOffset, dialPos = 0, 0, 0
 local lastDetent = 0
-local targets = {}
+local target = nil
 local tumbler = 1
 local armed = true
 local remaining = GAME_MS
@@ -142,12 +154,37 @@ local dbgCursor = 1
 local dbgPage = 1
 local dbgSel = {}
 -- Debug is a branch now: Screens jumps straight to an end screen to inspect it,
--- Modifiers is the forced-set picker.
-local DEBUG_ITEMS <const> = { "Screens", "Modifiers" }
+-- Modifiers is the forced-set picker, Audio is the live mixer over Sfx.mix.
+local DEBUG_ITEMS <const> = { "Screens", "Modifiers", "Audio" }
 local SCREEN_ITEMS <const> = { "Safe open", "Time's up", "Caught", "Boom" }
 local SCREEN_KIND <const> = { "win", "timeup", "caught", "boom" }
 local dbgMenuIndex = 1
 local dbgScreenIndex = 1
+-- Audio mixer page. Every level in Sfx.mix, one per row, adjusted in dB and
+-- auditioned on the spot. State, constants and helpers all live on this one
+-- table: main.lua sits close to Lua's 200-local ceiling for a main chunk, and
+-- spelling this page out as a dozen file locals blows straight through it.
+--
+-- `index` is the selected row, `top` the first visible one - 20 entries do not
+-- fit on a 240px screen, so the list scrolls to keep the cursor in view.
+--
+-- Levels live in Sfx.mix already in dB on the 0..20 scale (0 dB is silence,
+-- 20 dB is the device's maximum), so this page edits them directly. The grid is
+-- 0.1 dB - 200 positions - held as an integer index so repeated presses cannot
+-- drift the value.
+--
+-- HOLD/STEP/REPLAY: held left/right ramps through the range, but a one-shot is
+-- re-struck on a slower clock than the steps land on, or holding the button is
+-- just a burst of noise. A bed is already looping, so it only needs its gain
+-- moved and is exempt. FAST_MS/FAST_STEP: 400 steps of 0.1 dB is a 22 second
+-- sweep, so a hold that outlasts FAST_MS moves 0.5 dB a step instead.
+local Mixer = {
+    index = 1, top = 1, held = 0, heldAt = 0, nextStep = 0, nextPlay = 0,
+    ROWS = 8,
+    MAX_IDX = 400,        -- 40.0 dB, the device maximum
+    HOLD_MS = 300, STEP_MS = 55, REPLAY_MS = 260,
+    FAST_MS = 1200, FAST_STEP = 5,
+}
 local doorImage = nil
 -- The door, the dial well, the timer plate chrome and the three modifier cards
 -- never change during a run, so they are drawn once into this image and blitted
@@ -240,39 +277,12 @@ local function wrapDist(a, b)
     return math.abs(((a - b + 50) % 100) - 50)
 end
 
--- Targets are built from GAPS rather than by guessing positions and rejecting
--- the bad ones.
---
--- Rejection sampling looks fine at three tumblers and is a trap at four: the
--- start plus four targets all needing 18 units of clearance wants 90 of the
--- dial's 100, so valid arrangements are so rare the loop effectively never
--- terminates. That hung the game on every FOUR TUMBLERS run.
---
--- Instead: hand out count+1 gaps that each clear `sep` and sum to exactly 100,
--- then walk them round the dial. Always succeeds, in one pass, whatever the
--- count. The shuffle at the end matters - without it the tumblers would always
--- appear in rotational order from the start position, which is a pattern a
--- player could learn to sweep.
-local function genTargets(startPos, count)
-    local sep = math.min(18, math.floor(100 / (count + 1)) - 4)
-    local gaps = {}
-    for i = 1, count + 1 do gaps[i] = sep end
-    for _ = 1, 100 - (count + 1) * sep do
-        local i = math.random(count + 1)
-        gaps[i] = gaps[i] + 1
-    end
-
-    local t = {}
-    local pos = startPos
-    for i = 1, count do
-        pos = (pos + gaps[i]) % 100
-        t[i] = pos
-    end
-    for i = count, 2, -1 do
-        local j = math.random(i)
-        t[i], t[j] = t[j], t[i]
-    end
-    return t
+-- Only the current real spot exists. A latch (or loss of actual progress)
+-- creates the next search away from the dial and from the fixed decoy.
+local function spawnTarget()
+    target = Spots.pick(dialPos, decoyTarget)
+    armed = true
+    wrongTold = false
 end
 
 local function addEffect(set, x, y, life)
@@ -301,7 +311,7 @@ local function placeAround(set, spread)
     return x, y
 end
 
-local function startGame(forced)
+local function startGame(forced, untimed)
     local startT0 = pd.getCurrentTimeMilliseconds()
     math.randomseed(now())
     rawPos = math.random(0, 99)
@@ -319,26 +329,18 @@ local function startGame(forced)
         picked, mode = Mods.roll(3)
     end
     Run.mods, Run.mode = picked or {}, mode or "normal"
+    -- An untimed run still counts `remaining` down to nothing on screen; it is
+    -- updatePlay that stops decrementing it, so nothing else has to special-case
+    -- the clock. Cleared here so a normal run can never inherit it.
+    Run.untimed = untimed and true or false
+    tutorialStep = nil
+    Tutorial.reset()
     Run.cfg = Mods.buildCfg(Run.mods)
     Run.dirs = Mods.rollDirs(Run.cfg.tumblers, Run.cfg.randomDirs)
-    targets = genTargets(dialPos, Run.cfg.tumblers)
-
-    -- DECOY gets its own spot, held clear of the real ones and of the start so it
-    -- can never be mistaken for one by position alone - only by sound.
+    -- Place the fixed decoy first; each real spot can then avoid it. Unlike
+    -- fitting a decoy around an entire combination, this always has room.
     decoyTarget = nil
-    if Run.cfg.decoy then
-        for _ = 1, 200 do
-            local n = math.random(0, 99)
-            local ok = wrapDist(n, dialPos) >= 18
-            for _, v in ipairs(targets) do
-                if wrapDist(n, v) < 18 then ok = false end
-            end
-            if ok then
-                decoyTarget = n
-                break
-            end
-        end
-    end
+    if Run.cfg.decoy then decoyTarget = Spots.pick(dialPos) end
     decoyArmed = true
     driftSign = (math.random(2) == 1) and 1 or -1
     guardDeadline = nil
@@ -366,7 +368,7 @@ local function startGame(forced)
     if Run.cfg.nitro then pd.startAccelerometer() else pd.stopAccelerometer() end
     bgImage = nil
     tumbler = 1
-    armed = true
+    spawnTarget()
     lastDetent = math.floor(dialPos / TICK_STEP)
     remaining = GAME_MS
     shakeStart = -9999
@@ -380,9 +382,9 @@ local function startGame(forced)
     winPanel = nil
     exitImage = nil
     state = STATE_PLAY
-    Sfx.setMechVolume(Run.cfg.mechVol)
+    Sfx.setMechVolume(Run.cfg.mechVol, Run.has("too-loud"))
     Sfx.start()
-    Sfx.bgmStart(Run.cfg.bgmTrack, Run.cfg.bgmVol)
+    Sfx.bgmStart(Run.cfg.bgmTrack)
     startMs = pd.getCurrentTimeMilliseconds() - startT0
 end
 
@@ -453,13 +455,17 @@ local function updateTitleDial(dt)
 end
 
 local function resetProgress(set)
+    Tutorial.feedback(tutorialStep, "reset")
     if tumbler > 1 then
         tumbler = 1
+        spawnTarget()
         Sfx.reset()
         local x, y = placeAround(set, 30)
         addEffect(set, x, y, 640)
+    else
+        -- Spinning at zero progress must not keep rerolling the search.
+        armed = wrapDist(dialPos, target) > TOL
     end
-    armed = wrapDist(dialPos, targets[1]) > TOL
 end
 
 -- Every way a run ends other than the clock: ONE SHOT's wrong pull, GUARD's
@@ -503,16 +509,21 @@ local function tryHandle()
         loseRun("caught")
         return
     end
-    if tumbler > 1 then Sfx.reset() end
-    tumbler = 1
-    armed = wrapDist(dialPos, targets[1]) > TOL
+    if tumbler > 1 then
+        Sfx.reset()
+        tumbler = 1
+        spawnTarget()
+    else
+        armed = wrapDist(dialPos, target) > TOL
+    end
+    Tutorial.feedback(tutorialStep, "locked")
     local x, y = placeAround(sfxImages.locked, 30)
     addEffect(sfxImages.locked, x, y, 640)
 end
 
--- DECOY. Latches like a real spot and sounds almost like one, but never
--- advances and never shakes the screen. Those two absences - the dud in the
--- tail, the missing shake - are the only tells, one per channel.
+-- DECOY stays at one learnable position throughout the run. Its click ends in
+-- a buzz, gives no progress and never shakes the screen. It can sound again
+-- after leaving and re-entering, without changing the required direction.
 local function checkDecoy(delta, speed)
     local cfg = Run.cfg
     if not cfg.decoy or not decoyTarget then return end
@@ -537,10 +548,9 @@ local function checkTumbler(delta)
         resetProgress(sfxImages.reset)
         return
     end
-    checkDecoy(delta, speed)
     if tumbler > cfg.tumblers then return end
+    checkDecoy(delta, speed)
 
-    local target = targets[tumbler]
     local need = Run.dirs[tumbler]
     local inZone = wrapDist(dialPos, target) <= TOL
 
@@ -563,12 +573,14 @@ local function checkTumbler(delta)
     end
 
     if speed > cfg.maxEngage then
+        Tutorial.feedback(tutorialStep, "slow")
         armed = false
         Sfx.graze()
         local x, y = placeAround(sfxImages.toofast, 30)
         addEffect(sfxImages.toofast, x, y, 620)
         if tumbler > 1 then
             tumbler = 1
+            spawnTarget()
             Sfx.reset()
         end
         return
@@ -582,11 +594,14 @@ local function checkTumbler(delta)
     if cfg.shake then shakeStart = now() end
 
     tumbler = tumbler + 1
+    Tutorial.feedback(tutorialStep, nil)
     Sfx.sweetSpot()
     local x, y = placeAround(sfxImages.kchik, 32)
     addEffect(sfxImages.kchik, x, y, 680)
     if tumbler <= cfg.tumblers then
-        armed = wrapDist(dialPos, targets[tumbler]) > TOL
+        spawnTarget()
+    else
+        target = nil
     end
 end
 
@@ -622,16 +637,27 @@ local function buildBackground()
         Art.drawDoor()
         Art.drawDialWell(PLAY_CX, PLAY_CY, WELL_R)
         timerTX, timerTY = Art.drawTimerPlate(24, 20)
-        for i, m in ipairs(Run.mods or {}) do
-            Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
-                Mods.iconImage(m.icon), m.name, m.sub)
+        if tutorialStep == 2 then
+            Tutorial.draw(tutorialStep, tumbler, CARD_X, CARD_Y, CARD_W, CARD_H, CARD_GAP)
+        elseif not tutorialStep then
+            for i, m in ipairs(Run.mods or {}) do
+                Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
+                    Mods.iconImage(m.icon), m.name, m.sub)
+            end
         end
     gfx.popContext()
     return img
 end
 
+-- Dashes rather than a frozen 03:00.00 on an untimed run: a clock that is not
+-- moving reads as a bug, one that is not there reads as the rule it is.
+local function timerText()
+    if Run.untimed then return "--:--.--" end
+    return formatTime(remaining)
+end
+
 local function drawHud()
-    Art.drawTimerText(timerTX, timerTY, formatTime(remaining))
+    Art.drawTimerText(timerTX, timerTY, timerText())
     -- ONE SHOT: the prompt shakes, because pressing it wrongly ends the run.
     -- Flavour, not information - the card already states the rule, which is why
     -- losing this under BLACKOUT costs the player nothing.
@@ -701,9 +727,13 @@ local function buildBlackout()
         -- the cards last and at full strength: they are the one thing that must
         -- stay legible in the dark
         gfx.setStencilImage(cardMask)
-        for i, m in ipairs(Run.mods or {}) do
-            Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
-                Mods.iconImage(m.icon), m.name, m.sub)
+        if tutorialStep == 2 then
+            Tutorial.draw(tutorialStep, tumbler, CARD_X, CARD_Y, CARD_W, CARD_H, CARD_GAP)
+        else
+            for i, m in ipairs(Run.mods or {}) do
+                Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
+                    Mods.iconImage(m.icon), m.name, m.sub)
+            end
         end
         gfx.clearStencil()
         -- the timer is unaffected by the blackout, so it is drawn outside the cone
@@ -828,6 +858,10 @@ local function drawLitScene()
     drawDrops()            -- before the HUD: the clock and the cards win
     drawHud()
     drawEffects()
+    -- Guidance wins over any latch lettering that reaches the right column.
+    if tutorialStep == 1 then
+        Tutorial.draw(tutorialStep, tumbler, CARD_X, CARD_Y, CARD_W, CARD_H, CARD_GAP)
+    end
     drawNitro()   -- last: the spirit level sits over everything
 end
 
@@ -870,7 +904,7 @@ local function drawScene()
         end
         if not blackoutBg then blackoutBg = buildBlackout() end
         blackoutBg:draw(0, 0)
-        Art.drawTimerText(timerTX, timerTY, formatTime(remaining))
+        Art.drawTimerText(timerTX, timerTY, timerText())
         drawPerf()
         -- no dial, no shake, no SFX text, and no Ⓐ prompt: the run is played by ear
         return
@@ -880,15 +914,12 @@ local function drawScene()
 end
 
 -- WANDERING: the spots creep only while the dial is still, so holding steady to
--- think is what costs you and cranking is the counter. Already-latched spots are
--- left alone. Capped at Mods.MAX_DRIFT, well under the latch ceiling.
+-- think is what costs you and cranking is the counter. Only the active real
+-- spot moves; it reflects before getting too close to the fixed decoy.
 local function driftTargets(dt, speed)
     local cfg = Run.cfg
-    if cfg.drift <= 0 or speed >= DEAD_SPEED then return end
-    local d = cfg.drift * dt / 1000 * driftSign
-    for i = tumbler, cfg.tumblers do
-        if targets[i] then targets[i] = (targets[i] + d) % 100 end
-    end
+    if cfg.drift <= 0 or speed >= DEAD_SPEED or not target or tumbler > cfg.tumblers then return end
+    target, driftSign = Spots.drift(target, decoyTarget, cfg.drift * dt / 1000, driftSign)
 end
 
 -- GUARD: footsteps, then three seconds to bring the dial to a stop. Still moving
@@ -1022,7 +1053,7 @@ local function updatePlay(dt)
         if blackoutClock >= BLACKOUT_MS then blackoutClock = nil end
         return
     end
-    remaining = remaining - dt
+    if not Run.untimed then remaining = remaining - dt end
     local delta = readCrank()
     doTicks(delta)
     if state == STATE_PLAY then
@@ -1048,6 +1079,14 @@ local function updatePlay(dt)
     end
 end
 
+-- Set `tutorialStep` after the call: startGame clears it.
+local function startTutorial(step)
+    local forced = {}
+    for i, id in ipairs(TUTORIAL[step].mods) do forced[i] = Mods.byId[id] end
+    startGame(forced, true)
+    tutorialStep = step
+end
+
 local DOCKED_TEXT <const> = "UNDOCK THE CRANK"
 
 local function drawDockedNotice()
@@ -1070,11 +1109,27 @@ local function buildWinPanel()
         f.img:draw(200 - f.hw, 76 - f.hh)
         gfx.setFont(Art.uiFont)
         gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
-        gfx.drawTextAligned("TIME LEFT", 200, 118, kTextAlignment.center)
-        gfx.setFont(Art.timerFont)
-        gfx.drawTextAligned(formatTime(remaining), 200, 138, kTextAlignment.center)
+        -- An untimed run has no time left to report, so the same two lines name
+        -- where in the tutorial you are instead.
+        if tutorialStep then
+            gfx.drawTextAligned("TUTORIAL", 200, 118, kTextAlignment.center)
+            gfx.setFont(Art.timerFont)
+            gfx.drawTextAligned(string.format("%d OF %d", tutorialStep, #TUTORIAL),
+                200, 138, kTextAlignment.center)
+        else
+            gfx.drawTextAligned("TIME LEFT", 200, 118, kTextAlignment.center)
+            gfx.setFont(Art.timerFont)
+            gfx.drawTextAligned(formatTime(remaining), 200, 138, kTextAlignment.center)
+        end
         gfx.setImageDrawMode(gfx.kDrawModeCopy)
-        drawIconLabel(Art.iconA, "AGAIN", 200, 184, true)
+        -- Ⓐ says NEXT while a step is left and NEW GAME on the last one: it rolls
+        -- a fresh run rather than replaying the step, and AGAIN would promise the
+        -- opposite. Outside the tutorial it is its normal self.
+        local aLabel = "AGAIN"
+        if tutorialStep then
+            aLabel = tutorialStep < #TUTORIAL and "NEXT" or "NEW GAME"
+        end
+        drawIconLabel(Art.iconA, aLabel, 200, 184, true)
         drawIconLabel(Art.iconB, "TITLE", 200, 210, true)
     gfx.popContext()
     return img
@@ -1219,6 +1274,26 @@ local function drawLose()
     end
 end
 
+-- The title screen's two calls to action. Each pill is sized to its own label
+-- rather than to a fixed width, so the pair stays centred and balanced whatever
+-- the text says.
+local CTA_H <const> = 28
+local CTA_PADX <const> = 13
+local CTA_GAP <const> = 10
+
+local function ctaWidth(text)
+    gfx.setFont(Art.numFont)
+    return ICON + ICON_GAP + gfx.getTextSize(text) + CTA_PADX * 2
+end
+
+local function drawCta(icon, text, x, y)
+    local w = ctaWidth(text)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillRoundRect(x, y, w, CTA_H, 6)
+    drawIconLabel(icon, text, x + w // 2, y + (CTA_H - ICON) // 2, true)
+    return w
+end
+
 local function drawTitle()
     -- The plate carries the brick wall, the vault door it is set into, the floor
     -- and both robbers, with the dial, wordmark and CTA cut out of it as white.
@@ -1226,16 +1301,17 @@ local function drawTitle()
     Art.drawDial(CX, 126, 62, dialPos)
     local tf = sfxImages.title.frames[1]
     tf.img:draw(200 - tf.hw, 40 - tf.hh)
-    gfx.setFont(Art.uiFont)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillRoundRect(120, 204, 160, 30, 6)
-    drawIconLabel(Art.iconA, "CRACK IT", 200, 212, true)
+    local wA, wB = ctaWidth("CRACK IT"), ctaWidth("TUTORIAL")
+    local cx = math.floor(200 - (wA + CTA_GAP + wB) / 2)
+    drawCta(Art.iconA, "CRACK IT", cx, 204)
+    drawCta(Art.iconB, "TUTORIAL", cx + wA + CTA_GAP, 204)
     drawEffects()          -- the auto-turn's latches land here
 end
 
 local function startToTitle()
     -- Quitting mid-run leaves the play BGM running otherwise
     Sfx.titleAudio()
+    tutorialStep = nil
     exitImage = gfx.getDisplayImage()
     exitClock = 0
     effects = {}
@@ -1344,6 +1420,83 @@ local function jumpScreen(kind)
     end
 end
 
+-- dB <-> the 0.1 dB grid index, so a run of presses lands on exact tenths.
+function Mixer.toIdx(db)
+    local i = math.floor(db * 10 + 0.5)
+    if i < 0 then i = 0 end
+    if i > Mixer.MAX_IDX then i = Mixer.MAX_IDX end
+    return i
+end
+
+function Mixer.adjust(dir, step)
+    local e = Sfx.mixList[Mixer.index]
+    local i = Mixer.toIdx(Sfx.mix[e.id]) + dir * step
+    if i < 0 then i = 0 end
+    if i > Mixer.MAX_IDX then i = Mixer.MAX_IDX end
+    Sfx.mix[e.id] = i / 10
+end
+
+function Mixer.draw()
+    local bx <const>, by <const> = 14, 8
+    local boxW <const>, boxH <const> = 372, 222
+    local PADX <const> = 14
+    local rowH <const> = 19
+    Art.drawPanel(bx, by, boxW, boxH)
+
+    local right = bx + boxW - PADX
+    gfx.setFont(Art.numFont)
+    gfx.drawText("AUDIO", bx + PADX, by + 8)
+    gfx.drawTextAligned(string.format("%d/%d", Mixer.index, #Sfx.mixList),
+        right, by + 8, kTextAlignment.right)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillRect(bx + PADX, by + 24, boxW - PADX * 2, 1)
+
+    local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
+    local nameX = bx + PADX + CURSOR_W + CURSOR_GAP
+    local barX <const>, barW <const> = 158, 140
+
+    for r = 0, Mixer.ROWS - 1 do
+        local i = Mixer.top + r
+        local e = Sfx.mixList[i]
+        if e then
+            local ry = by + 30 + r * rowH
+            local db = Sfx.mix[e.id]
+            if i == Mixer.index then
+                drawCursor(bx + PADX, ry + inkTop + math.floor((inkH - 16) / 2))
+            end
+            gfx.drawText(e.name, nameX, ry)
+            local barY = ry + inkTop + math.floor((inkH - 8) / 2)
+            gfx.setColor(gfx.kColorBlack)
+            gfx.drawRect(barX, barY, barW, 8)
+            if db > 0 then
+                gfx.fillRect(barX + 1, barY + 1,
+                    math.max(1, math.floor((barW - 2) * db / Sfx.DB_MAX)), 6)
+            end
+            gfx.drawTextAligned(string.format("%.1f dB", db), right, ry,
+                kTextAlignment.right)
+        end
+    end
+
+    -- The selected row spelled out in linear amplitude, which is the number that
+    -- gets typed back into Sfx.mix once a level is settled on.
+    local sel = Sfx.mixList[Mixer.index]
+    gfx.setColor(gfx.kColorBlack)
+    gfx.fillRect(bx + PADX, by + 182, boxW - PADX * 2, 1)
+    gfx.setFont(Art.subFont)
+    gfx.drawText(string.upper(sel.sub), bx + PADX, by + 187)
+    gfx.drawTextAligned(string.format("Sfx.mix.%s = %.1f", sel.id, Sfx.mix[sel.id]),
+        right, by + 187, kTextAlignment.right)
+
+    local hx = bx + PADX
+    gfx.drawText("L/R LEVEL", hx, by + 202)
+    hx = hx + gfx.getTextSize("L/R LEVEL") + 14
+    Art.iconA:draw(hx, by + 200)
+    gfx.drawText("PLAY", hx + 17, by + 202)
+    hx = hx + 17 + gfx.getTextSize("PLAY") + 14
+    Art.iconB:draw(hx, by + 200)
+    gfx.drawText("BACK", hx + 17, by + 202)
+end
+
 local function drawMenu()
     if menuImage then menuImage:draw(0, 0) end
     gfx.setColor(gfx.kColorBlack)
@@ -1358,6 +1511,11 @@ local function drawMenu()
 
     if menuPage == "dbgscreens" then
         drawSimpleMenu(SCREEN_ITEMS, dbgScreenIndex, "SCREENS")
+        return
+    end
+
+    if menuPage == "dbgaudio" then
+        Mixer.draw()
         return
     end
 
@@ -1524,14 +1682,82 @@ local function updateMenu(dt)
             menuPage = "main"
         elseif pd.buttonJustPressed(pd.kButtonA) then
             Sfx.uiConfirm()
-            if DEBUG_ITEMS[dbgMenuIndex] == "Screens" then
+            local pick = DEBUG_ITEMS[dbgMenuIndex]
+            if pick == "Screens" then
                 menuPage = "dbgscreens"
                 dbgScreenIndex = 1
+            elseif pick == "Audio" then
+                menuPage = "dbgaudio"
+                Mixer.index, Mixer.top, Mixer.held = 1, 1, 0
+                -- The page owns the whole bus while it is up, so a level is
+                -- judged on that one sound and nothing else.
+                Sfx.auditionBegin()
             else
                 menuPage = "dbgmods"
                 dbgSel = {}
                 dbgCursor, dbgPage = 1, 1
             end
+        end
+        return
+    end
+
+    if menuPage == "dbgaudio" then
+        local t = now()
+        local entry = Sfx.mixList[Mixer.index]
+        local moved = 0
+        if pd.buttonJustPressed(pd.kButtonUp) then moved = -1
+        elseif pd.buttonJustPressed(pd.kButtonDown) then moved = 1 end
+        if moved ~= 0 then
+            Mixer.index = (Mixer.index - 1 + moved) % #Sfx.mixList + 1
+            if Mixer.index < Mixer.top then Mixer.top = Mixer.index end
+            if Mixer.index > Mixer.top + Mixer.ROWS - 1 then
+                Mixer.top = Mixer.index - Mixer.ROWS + 1
+            end
+            Mixer.held = 0
+            -- Cut whatever the last row was still playing: a bed would otherwise
+            -- keep looping under the next one.
+            Sfx.auditionSilence()
+            Sfx.uiHover()
+            return
+        end
+
+        local dir = 0
+        if pd.buttonJustPressed(pd.kButtonRight) then dir = 1
+        elseif pd.buttonJustPressed(pd.kButtonLeft) then dir = -1 end
+        if dir ~= 0 then
+            Mixer.held = dir
+            Mixer.heldAt = t
+            Mixer.nextStep = t + Mixer.HOLD_MS
+            Mixer.adjust(dir, 1)
+            Sfx.audition(entry)
+            Mixer.nextPlay = t + Mixer.REPLAY_MS
+        elseif Mixer.held ~= 0 then
+            local btn = Mixer.held > 0 and pd.kButtonRight or pd.kButtonLeft
+            if pd.buttonIsPressed(btn) then
+                if t >= Mixer.nextStep then
+                    Mixer.nextStep = t + Mixer.STEP_MS
+                    Mixer.adjust(Mixer.held,
+                        t - Mixer.heldAt >= Mixer.FAST_MS and Mixer.FAST_STEP or 1)
+                    if entry.track then
+                        Sfx.audition(entry)
+                    elseif t >= Mixer.nextPlay then
+                        Sfx.audition(entry)
+                        Mixer.nextPlay = t + Mixer.REPLAY_MS
+                    end
+                end
+            else
+                Mixer.held = 0
+                -- One last strike on release, so the value you stopped on is
+                -- always the one you last heard.
+                if not entry.track then Sfx.audition(entry) end
+                Mixer.nextPlay = t + Mixer.REPLAY_MS
+            end
+        elseif pd.buttonJustPressed(pd.kButtonA) then
+            Sfx.audition(entry)     -- no uiConfirm: it would mask what A plays
+        elseif pd.buttonJustPressed(pd.kButtonB) then
+            Sfx.auditionEnd()
+            Sfx.uiBack()
+            menuPage = "debug"
         end
         return
     end
@@ -1653,6 +1879,7 @@ function pd.update()
         updateTitleDial(dt)
         drawTitle()
         if pd.buttonJustPressed(pd.kButtonA) then startGame() end
+        if pd.buttonJustPressed(pd.kButtonB) then Sfx.uiConfirm(); startTutorial(1) end
     elseif state == STATE_PLAY then
         if pd.buttonJustPressed(pd.kButtonB) then
             -- Open and draw, but do NOT run updateMenu this frame: buttonJustPressed
@@ -1679,7 +1906,13 @@ function pd.update()
         updateWin(dt)
         drawWin()
         if winPhase == 3 then
-            if pd.buttonJustPressed(pd.kButtonA) then startGame() end
+            if pd.buttonJustPressed(pd.kButtonA) then
+                if tutorialStep and tutorialStep < #TUTORIAL then
+                    startTutorial(tutorialStep + 1)
+                else
+                    startGame()
+                end
+            end
             if pd.buttonJustPressed(pd.kButtonB) then Sfx.uiBack(); startToTitle() end
         end
     elseif state == STATE_TOTITLE then
@@ -1698,7 +1931,9 @@ function pd.update()
         updateLose(dt)
         drawLose()
         if losePhase == 3 then
-            if pd.buttonJustPressed(pd.kButtonA) then startGame() end
+            if pd.buttonJustPressed(pd.kButtonA) then
+                if tutorialStep then startTutorial(tutorialStep) else startGame() end
+            end
             if pd.buttonJustPressed(pd.kButtonB) then Sfx.uiBack(); startToTitle() end
         end
     end

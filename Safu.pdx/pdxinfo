@@ -4,5 +4,6 @@ description=Crack the safe with the crank.
 bundleID=com.vincent.safu
 version=0.1
 buildNumber=1
+imagePath=launcher
 pdxversion=30101
-buildtime=841769757
+buildtime=842088398
