@@ -37,14 +37,20 @@ for _, name in ipairs({ "readCrank", "updatePlay", "openMenu", "closeMenu", "upd
 end
 h.loadInto(assert(h.source:match("(Keypad%.buttons%s*=%s*%b{})")), "main.lua:Keypad.buttons", e)
 h.loadInto(h.extract("Keypad.updateInput", true), "main.lua:Keypad.updateInput", e)
+h.loadInto(h.extract("GearMesh.updateInput", true), "main.lua:GearMesh.updateInput", e)
+h.loadInto(h.extract("DustJam.updateInput", true), "main.lua:DustJam.updateInput", e)
+h.loadInto(h.extract("Run.shiftClocks", true), "main.lua:Run.shiftClocks", e)
 h.loadInto(h.extract("pd.update", true), "main.lua:pd.update", e)
+for _, name in ipairs({ "pd.gameWillPause", "pd.gameWillResume", "pd.gameWillTerminate", "pd.deviceWillSleep", "pd.deviceDidUnlock" }) do
+    h.loadInto(h.extract(name, true), "main.lua:" .. name, e)
+end
 e.MENU_ITEMS = { "Resume", "Modifiers", "Debug", "Quit" }
 
-local function frame(keys, delta)
+local function frame(keys, delta, elapsedMs)
     held = {}
     for _, name in ipairs(keys or {}) do held[assert(buttons[name], "Unknown button " .. name)] = true end
     crank = (delta or 0) * e.DEG_PER_UNIT
-    h.advance(20)
+    h.advance(elapsedMs or 20)
     e.pd.update()
     previous = held
 end
@@ -379,3 +385,8 @@ end)
 
 local groups, checks = h.totals()
 print(string.format("PASS %d total groups, %d invariant checks", groups, checks))
+
+-- Confirmation modifiers share the same real frame dispatcher and device stubs.
+h.frame, h.resetInputs, h.putDial = frame, resetInputs, putDial
+h.setDocked = function(value) docked = value end
+return h

@@ -167,6 +167,7 @@ local currentTrack = "sounds/bgm"
 -- Remembered so the menu can duck and restore without knowing which track this
 -- particular run happens to be using.
 local bgmVol = Sfx.gain("bgmDefault")
+local ducked, dustListening = false, false
 
 local function after(ms, fn)
     playdate.timer.performAfterDelay(ms, fn)
@@ -295,7 +296,8 @@ function Sfx.bgmStart(track)
         currentTrack = track
     end
     bgmVol = Sfx.gain(TRACK_MIX[track] or "bgmDefault")
-    bgm:setVolume(bgmVol)
+    ducked, dustListening = false, false
+    Sfx.applyBgmVolume()
     bgm:play(0)
 end
 
@@ -304,10 +306,18 @@ function Sfx.bgmStop()
 end
 
 -- The pause menu pushes the run into the background, so its music goes with it.
-local ducked = false
+function Sfx.applyBgmVolume()
+    bgm:setVolume(dustListening and 0 or (ducked and bgmVol * 0.28 or bgmVol))
+end
+
 function Sfx.bgmDuck(on)
     ducked = on and true or false
-    bgm:setVolume(ducked and bgmVol * 0.28 or bgmVol)
+    Sfx.applyBgmVolume()
+end
+
+function Sfx.dustListening(on)
+    dustListening = on and true or false
+    Sfx.applyBgmVolume()
 end
 
 -- Everything the title screen should sound like. Called on boot and on every
@@ -397,7 +407,7 @@ function Sfx.auditionEnd()
     previewTrack = nil
     if bedWasOn then
         bgmVol = Sfx.gain(TRACK_MIX[currentTrack] or "bgmDefault")
-        bgm:setVolume(ducked and bgmVol * 0.28 or bgmVol)
+        Sfx.applyBgmVolume()
         bgm:play(0)
     end
 end

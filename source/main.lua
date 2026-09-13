@@ -7,6 +7,12 @@ import "tutorial"
 import "spots"
 import "keypad"
 import "keypad-ui"
+import "gear-mesh"
+import "gear-mesh-ui"
+import "dust-jam"
+import "dust-jam-ui"
+import "spotlight"
+import "spotlight-ui"
 
 local gfx <const> = playdate.graphics
 local pd <const> = playdate
@@ -320,8 +326,8 @@ local function startGame(forced, untimed)
     rawPos = math.random(0, 99)
     posOffset = 0
     dialPos = rawPos % 100
-    -- roll returns nil only if 500 attempts all hit a banned pair, which 182
-    -- playable triples out of 220 makes vanishingly unlikely - but Run.has()
+    -- roll returns nil only if 500 attempts all hit a banned pair, which many
+    -- playable triples make vanishingly unlikely - but Run.has()
     -- iterates this, so it may never be nil.
     local picked, mode
     if forced then
@@ -340,7 +346,14 @@ local function startGame(forced, untimed)
     Tutorial.reset()
     Keypad.reset()
     KeypadUI.reset()
+    GearMesh.reset()
+    DustJam.reset()
+    Spotlight.reset()
+    Run.pausedAt = nil
     Run.cfg = Mods.buildCfg(Run.mods)
+    if Run.cfg.gearMesh then GearMeshUI.reset() end
+    if Run.cfg.dustJam then DustJamUI.reset() end
+    if Run.cfg.spotlight then SpotlightUI.reset() end
     Run.dirs = Mods.rollDirs(Run.cfg.tumblers, Run.cfg.randomDirs)
     -- Place the fixed decoy first; each real spot can then avoid it. Unlike
     -- fitting a decoy around an entire combination, this always has room.
@@ -370,7 +383,7 @@ local function startGame(forced, untimed)
     flashClicked = false
     wrongTold = true
     loseReason = "timeup"
-    if Run.cfg.nitro then pd.startAccelerometer() else pd.stopAccelerometer() end
+    if Run.cfg.nitro or Run.cfg.spotlight then pd.startAccelerometer() else pd.stopAccelerometer() end
     bgImage = nil
     tumbler = 1
     spawnTarget()
@@ -461,6 +474,8 @@ end
 
 local function resetProgress(set)
     Keypad.cancel()
+    GearMesh.cancel()
+    DustJam.cancel()
     Tutorial.feedback(tutorialStep, "reset")
     if tumbler > 1 then
         tumbler = 1
@@ -479,6 +494,8 @@ end
 local function loseRun(reason)
     if state ~= STATE_PLAY then return end
     Keypad.cancel()
+    GearMesh.cancel()
+    DustJam.cancel()
     loseReason = reason
     state = STATE_LOSE
     losePhase = 1
@@ -493,6 +510,8 @@ end
 
 local function openSafe()
     Keypad.cancel()
+    GearMesh.cancel()
+    DustJam.cancel()
     pd.stopAccelerometer()
     Sfx.bgmStop()
     Sfx.handle()
@@ -549,7 +568,7 @@ local function checkDecoy(delta, speed)
     addEffect(sfxImages.kchik, x, y, 680)
 end
 
--- The normal latch feedback happens only after the whole keypad code succeeds.
+-- Confirmation modifiers award the real latch only after their input succeeds.
 local function latchTarget()
     armed = false
     local diff = ((target - dialPos + 50) % 100) - 50
@@ -560,8 +579,12 @@ local function latchTarget()
     tumbler = tumbler + 1
     Tutorial.feedback(tutorialStep, nil)
     Sfx.sweetSpot()
-    local x, y = placeAround(sfxImages.kchik, 32)
-    addEffect(sfxImages.kchik, x, y, 680)
+    -- Gear Mesh has its own caught gear + K-CHIK bubble. Do not duplicate that
+    -- confirmation with a second randomly placed word over the timer/cards.
+    if not Run.cfg.gearMesh and not Run.cfg.dustJam then
+        local x, y = placeAround(sfxImages.kchik, 32)
+        addEffect(sfxImages.kchik, x, y, 680)
+    end
     if tumbler <= Run.cfg.tumblers then
         spawnTarget()
     else
@@ -576,6 +599,7 @@ local function checkTumbler(delta)
         resetProgress(sfxImages.reset)
         return
     end
+    if GearMesh.visible() or DustJam.visible() then return end
     if tumbler > cfg.tumblers then return end
     if Keypad.active then
         if wrapDist(dialPos, target) > Keypad.HOLD_TOL then
@@ -622,7 +646,24 @@ local function checkTumbler(delta)
         return
     end
 
-    if cfg.keypad then
+    if cfg.dustJam then
+        local diff = ((target - dialPos + 50) % 100) - 50
+        posOffset = posOffset + diff
+        dialPos = (rawPos + posOffset) % 100
+        lastDetent = math.floor(dialPos / TICK_STEP)
+        armed = false
+        DustJam.begin()
+    elseif cfg.gearMesh then
+        -- Discovery is not a latch. The little gear moves by itself; no extra
+        -- hold-zone requirement, and the physical crank remains one-to-one.
+        local diff = ((target - dialPos + 50) % 100) - 50
+        posOffset = posOffset + diff
+        dialPos = (rawPos + posOffset) % 100
+        lastDetent = math.floor(dialPos / TICK_STEP)
+        armed = false
+        GearMesh.begin()
+        Sfx.uiHover()
+    elseif cfg.keypad then
         -- Center the hold zone on entry, as the ordinary latch centers the dial.
         -- The crank remains live; only completing the arrows earns the click.
         local diff = ((target - dialPos + 50) % 100) - 50
@@ -635,6 +676,75 @@ local function checkTumbler(delta)
     else
         latchTarget()
     end
+end
+
+-- Preserve wall-clock schedules across permission dialogs, pause and docking.
+-- Challenge animations use dt only and already freeze outside active play.
+function Run.shiftClocks(ms)
+    if not ms or ms <= 0 then return end
+    guardAt = guardAt + ms
+    if guardDeadline then guardDeadline = guardDeadline + ms end
+    guardMarkAt = guardMarkAt + ms
+    surgeAt, surgeUntil = surgeAt + ms, surgeUntil + ms
+    noteAt = noteAt + ms
+    shakeStart = shakeStart + ms
+    for _, e in ipairs(effects) do e.born = e.born + ms end
+    for _, d in ipairs(drops) do d.born = d.born + ms end
+end
+
+-- Dust owns all arrows through the clearing animation and their release.
+-- Microphone access starts automatically here, in the SDK-safe update context.
+function DustJam.updateInput(wasDust, dt)
+    if not Run.cfg.dustJam then return false end
+    if wasDust or DustJam.visible() then
+        if DustJam.active then
+            if DustJam.micState == "off" then
+                local before = now()
+                DustJam.enableMic()
+                Run.shiftClocks(now() - before)
+                lastTime = now()
+                pd.getCrankChange() -- discard movement during the system dialog
+            end
+            DustJam.listen()
+        end
+        local cleared = DustJam.update(dt, pd.buttonIsPressed(pd.kButtonUp), DustJam.readLevel())
+        if cleared then latchTarget() end
+        return true
+    end
+    DustJam.update(dt, false, nil) -- guard speaker suppression also ages during search
+    if DustJam.blockOpen then
+        if not pd.buttonIsPressed(pd.kButtonUp) and not pd.buttonIsPressed(pd.kButtonDown)
+            and not pd.buttonIsPressed(pd.kButtonLeft) and not pd.buttonIsPressed(pd.kButtonRight) then
+            DustJam.blockOpen = false
+        end
+        return true
+    end
+    return false
+end
+
+-- Returns true while Gear Mesh owns Down, including the dismissal frame and
+-- the release after it. Other arrows never catch a gear or pull the handle.
+function GearMesh.updateInput(wasGear)
+    if not Run.cfg.gearMesh then return false end
+    local held = pd.buttonIsPressed(pd.kButtonDown)
+    if wasGear or GearMesh.visible() then
+        if not GearMesh.active then return true end
+        if GearMesh.waitForRelease then
+            if not held then GearMesh.waitForRelease = false end
+            return true
+        end
+        if pd.buttonJustPressed(pd.kButtonDown) then
+            local result = GearMesh.press()
+            if result == "caught" then latchTarget()
+            elseif result == "miss" then Sfx.graze() end
+        end
+        return true
+    end
+    if GearMesh.blockOpen then
+        if not held then GearMesh.blockOpen = false end
+        return true
+    end
+    return false
 end
 
 Keypad.buttons = {
@@ -742,7 +852,8 @@ local function drawHud()
     -- losing this under BLACKOUT costs the player nothing.
     local tx = 0
     if Run.cfg and Run.cfg.oneShot then tx = math.sin(now() / 26) * 1.6 end
-    if not Keypad.active then
+    if not Keypad.active and not GearMesh.visible() and not DustJam.visible()
+        and not (Run.cfg.spotlight and target) then
         drawIconLabel(KeypadUI.iconDown, "OPEN?", PLAY_CX + tx, 186, false)
     end
     drawIconLabel(Art.iconB, "MENU", PLAY_CX, 204, false)
@@ -943,9 +1054,20 @@ local function drawLitScene()
     if tutorialStep == 1 then
         Tutorial.draw(tutorialStep, tumbler, CARD_X, CARD_Y, CARD_W, CARD_H, CARD_GAP)
     end
+    if Run.cfg.spotlight and target and not Keypad.active
+        and not GearMesh.visible() and not DustJam.visible() then
+        SpotlightUI.draw(target, dialPos, Spotlight.angle, Spotlight.calibrated)
+    end
+    if DustJam.visible() then
+        DustJamUI.draw(DustJam.progress, DustJam.blowing,
+            DustJam.active and "jammed" or "cleared", DustJam.clockMs, DustJam.micState)
+    end
     if Keypad.active then
         KeypadUI.draw(Keypad.sequence, Keypad.progress, Keypad.failed,
             (((dialPos - target + 50) % 100) - 50) / Keypad.HOLD_TOL)
+    end
+    if GearMesh.visible() then
+        GearMeshUI.draw(GearMesh.angle, GearMesh.visualState())
     end
     drawNitro()   -- last: the spirit level sits over everything
 end
@@ -1003,7 +1125,8 @@ end
 -- spot moves; it reflects before getting too close to the fixed decoy.
 local function driftTargets(dt, speed)
     local cfg = Run.cfg
-    if cfg.drift <= 0 or speed >= DEAD_SPEED or not target or tumbler > cfg.tumblers or Keypad.active then return end
+    if cfg.drift <= 0 or speed >= DEAD_SPEED or not target or tumbler > cfg.tumblers
+        or Keypad.active or GearMesh.visible() or DustJam.visible() then return end
     target, driftSign = Spots.drift(target, decoyTarget, cfg.drift * dt / 1000, driftSign)
 end
 
@@ -1031,6 +1154,7 @@ local function updateGuard(speed)
         end
     elseif t >= guardAt then
         Sfx.footstep()
+        DustJam.suppressMic(1800)
         guardDeadline = t + GUARD_GRACE_MS
         guardMarkAt = t
     end
@@ -1122,6 +1246,9 @@ end
 local function updatePlay(dt)
     frameMs = dt
     if pd.isCrankDocked() then
+        DustJam.suspend()
+        Run.shiftClocks(dt)
+        pd.getCrankChange() -- folding/unfolding must not accumulate an overspeed
         gfx.setColor(gfx.kColorBlack)
         return
     end
@@ -1140,22 +1267,38 @@ local function updatePlay(dt)
     end
     if not Run.untimed then remaining = remaining - dt end
     local delta = readCrank()
-    doTicks(delta)
+    if not DustJam.active then doTicks(delta) end
+    if Run.cfg.spotlight then
+        local x = pd.readAccelerometer()
+        -- Simulator arrows provide a steady alternative to its tilt controls.
+        local direction = (pd.buttonIsPressed(pd.kButtonRight) and 1 or 0)
+            - (pd.buttonIsPressed(pd.kButtonLeft) and 1 or 0)
+        if pd.isSimulator and not Keypad.active and not GearMesh.visible() and not DustJam.visible()
+            and (direction ~= 0 or Spotlight.usingButtons) then x = nil end
+        Spotlight.update(dt, x, direction)
+    end
     if state == STATE_PLAY then
         local speed = unitsPerSec(delta)
         local wasKeypad = Keypad.active
+        local wasGear = GearMesh.visible()
+        local wasDust = DustJam.visible()
+        GearMesh.update(dt)
         checkTumbler(delta)
         driftTargets(dt, speed)
         updateGuard(speed)
         updateNitro()
         updateSlosh()
         if state == STATE_PLAY and (remaining > 0 or Run.untimed) then
-            Keypad.updateInput(wasKeypad)
+            if not DustJam.updateInput(wasDust, dt) and not GearMesh.updateInput(wasGear) then
+                Keypad.updateInput(wasKeypad)
+            end
         end
     end
     updateNotes()
     if remaining <= 0 and state == STATE_PLAY then
         Keypad.cancel()
+        GearMesh.cancel()
+        DustJam.cancel()
         remaining = 0
         loseReason = "timeup"
         state = STATE_LOSE
@@ -1401,8 +1544,11 @@ end
 local function startToTitle()
     -- Quitting mid-run leaves the play BGM running otherwise
     Sfx.titleAudio()
+    pd.stopAccelerometer()
     tutorialStep = nil
     exitImage = gfx.getDisplayImage()
+    GearMesh.cancel()
+    DustJam.cancel()
     exitClock = 0
     effects = {}
     drops = {}
@@ -1421,6 +1567,8 @@ end
 -- blitted underneath, and update() runs none of the play logic while it is up.
 
 local function openMenu()
+    Run.pausedAt = now()
+    DustJam.suspend()
     Sfx.bgmDuck(true)
     menuImage = gfx.getDisplayImage()
     menuIndex = 1
@@ -1430,6 +1578,8 @@ local function openMenu()
 end
 
 local function closeMenu()
+    Run.shiftClocks(now() - (Run.pausedAt or now()))
+    Run.pausedAt = nil
     Sfx.bgmDuck(false)
     menuImage = nil
     state = STATE_PLAY
@@ -1494,6 +1644,8 @@ end
 -- real one, not a mock of it.
 local function jumpScreen(kind)
     menuImage = nil
+    GearMesh.cancel()
+    DustJam.cancel()
     Sfx.bgmStop()
     pd.stopAccelerometer()
     effects = {}
@@ -1641,13 +1793,13 @@ local function drawMenu()
                 -- cursor inverts the cell, a pick outlines it, so both read at once
                 if idx == dbgCursor then
                     gfx.setColor(gfx.kColorBlack)
-                    gfx.fillRoundRect(cx - 4, cy - 3, CELL_W, CELL_H - 2, 4)
+                    gfx.fillRoundRect(cx - 4, cy - 3, CELL_W, CELL_H + 2, 4)
                     gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
                 end
                 if on then
                     gfx.setColor(idx == dbgCursor and gfx.kColorWhite or gfx.kColorBlack)
                     gfx.setLineWidth(2)
-                    gfx.drawRoundRect(cx - 4, cy - 3, CELL_W, CELL_H - 2, 4)
+                    gfx.drawRoundRect(cx - 4, cy - 3, CELL_W, CELL_H + 2, 4)
                     gfx.setLineWidth(1)
                 end
                 local icon = Mods.iconImage(m.icon)
@@ -1689,7 +1841,7 @@ local function drawMenu()
     end
 
     if menuPage == "mods" then
-        -- Catalogue of every modifier, not just this run's: 12 across two pages,
+        -- Catalogue of every modifier, not just this run's: six per page,
         -- a 2x3 grid of cells laid out like the door's modifier cards.
         local COLS <const>, ROWS <const> = 2, 3
         local PER <const> = COLS * ROWS
@@ -2036,3 +2188,30 @@ end
 playdate.getSystemMenu():addCheckmarkMenuItem("perf", false, function(v)
     perfOn = v
 end)
+
+-- The system menu/lock can interrupt while the app is in active play. No mic
+-- stays open behind an OS surface, and wall-clock hazards resume where left.
+function pd.gameWillPause()
+    Run.systemPausedAt = now()
+    DustJam.suspend()
+end
+
+function pd.gameWillResume()
+    if state == STATE_PLAY then Run.shiftClocks(now() - (Run.systemPausedAt or now())) end
+    Run.systemPausedAt = nil
+    lastTime = now()
+    pd.getCrankChange()
+end
+
+function pd.gameWillTerminate()
+    DustJam.suspend()
+    pd.stopAccelerometer()
+end
+
+function pd.deviceWillSleep()
+    pd.gameWillPause()
+end
+
+function pd.deviceDidUnlock()
+    if Run.systemPausedAt then pd.gameWillResume() end
+end

@@ -59,6 +59,9 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | `TOL` | `2.2` | Sweet spot half-width in dial units (full zone is 4.4 units ≈ 15.84° wide) |
 | `Keypad.LENGTH` | `4` | Directional inputs required to secure each spot with KEYPAD |
 | `Keypad.HOLD_TOL` | `4.4` | Allowed distance from a found spot during arrow entry: ±15.84° of crank rotation |
+| `GearMesh.SPEED` | `120` | Automatic gear degrees/sec; one revolution every 3 seconds |
+| `GearMesh.CATCH_HALF` / `GAP_HALF` | `12` / `18` | Catch tolerance / drawn notch half-angle in degrees; full catch window is 200 ms |
+| `GearMesh.CAUGHT_MS` / `MISS_MS` | `500` / `650` | Caught confirmation / retry caption duration in active play time |
 | `cfg.maxEngage` | `25` | Max speed to latch — 25 units/**sec** ≈ **90°/sec**. Per-run, so it lives in `Mods.buildCfg`, not `main.lua` |
 | `RESET_SPEED` | `80` | Speed above which progress resets — 80 units/sec ≈ **288°/sec** |
 | `DEAD_SPEED` | `1.5` | Below this the dial counts as stationary |
@@ -269,6 +272,7 @@ revealed, so the mechanism never feels switched off. Lingering SFX are cleared o
 
 ### Crank docked
 Gameplay pauses (**the timer does not advance**) and `UNDOCK THE CRANK` is shown.
+Crank changes are drained while docked so folding/unfolding cannot accumulate a reset-speed delta.
 
 ---
 
@@ -321,7 +325,8 @@ Per frame, in order:
 
 0. `speed > RESET_SPEED` → reset progress to tumbler 1, `RESET!`. This still applies after
    all three are found, which is why the tutorial says to stop cranking before pressing Down. *(§7)*
-1. `tumbler > cfg.tumblers` → **stop** all sweet spot detection, including the decoy.
+1. A visible GEAR MESH or DUST JAM bubble → **stop** sweet spot detection until its catch/confirmation ends.
+   `tumbler > cfg.tumblers` → **stop** all sweet spot detection, including the decoy.
    An active KEYPAD bubble instead checks its hold range and returns (§6b). Otherwise check
    the fixed decoy, then the current real target below.
 2. Not inside `±TOL` of the current target → **re-arm** and stop.
@@ -329,7 +334,9 @@ Per frame, in order:
 4. `speed < DEAD_SPEED` (1.5 units/sec) → stop. *(can't latch a stationary dial)*
 5. Wrong direction → stop.
 6. `speed > MAX_ENGAGE_SPEED` → **graze**. *(§7)*
-7. With KEYPAD, **begin arrow entry** (§6b); otherwise **hit**.
+7. With DUST JAM, **begin clearing the jam** (§6e); with GEAR MESH, **begin the automatic gear catch**
+   (§6c); with KEYPAD, **begin arrow entry** (§6b); otherwise **hit**. Discovery under any confirmation
+   modifier earns no real latch until its challenge succeeds. SPOTLIGHT only reveals a visual clue (§6d).
 
 On a hit:
 - The dial **snaps exactly onto the target** (via `posOffset`), so it lands on a clean number.
@@ -367,7 +374,7 @@ The crank remains live and one-to-one; the game does not lock the player's input
 **Input ownership prevents accidental opening.** While the bubble is active, all D-pad input
 belongs to it. A frame that dismisses or completes the bubble also consumes its input, including
 Down. The player must release the D-pad before a later fresh Down can pull the handle. Direction
-buttons held when the bubble appears must first be released. A is inactive during play.
+buttons held when the bubble appears must first be released. A does not enter a code.
 
 Pausing or docking suspends entry and the run clock. The normal run clock continues during
 active entry. WANDERING freezes the acquired target while its bubble is open and resumes
@@ -382,7 +389,141 @@ It covers the lower dial and hides the open prompt while keeping the timer, modi
 upper dial, and menu prompt visible. The bubble draws above ordinary SFX; its static image is
 rebuilt only when the code, accepted count, or error state changes.
 
+### 6c. GEAR MESH: find, wait, catch
+
+The implemented version of `images/modifier-concept-gear-mesh-v2.png`. Approach each real sweet
+spot in its required direction at the ordinary safe speed. The dial snaps to the spot and a
+speech bubble reveals a **small gear that turns by itself**, with one open gap and a fixed catch
+at twelve o'clock. Discovery plays the quiet UI hover cue; it earns no latch or dial shake.
+
+**Tap D-pad Down when the gap reaches the top catch.** The gear turns clockwise at 120°/sec
+(one turn every 3 seconds), starting at a random angle from 120° to 240° so the first catch gives
+time to read it. Its open notch is 36° wide; allowing for the catch's width, the accepted center
+angle is ±12° around the top, a 200 ms window. Speed stays constant across the run.
+
+- **Caught:** the gap seats at exactly twelve, the catch visibly enters it, and `K-CHIK!` stays
+  in the bubble for 500 ms. The real latch sound and dial shake fire once; exactly one tumbler
+  advances and the next target spawns normally. This bubble replaces the random `K-CHIK!`
+  lettering for this modifier, giving one clear confirmation. TOO LOUD still mutes the sound.
+- **Missed:** a dull mechanical tick and `NEXT TURN` for 650 ms; the same gear keeps rotating.
+  Earlier latches and the current spot remain safe, including with ONE SHOT. There is no
+  additional penalty or attempt limit; the run timer continues while waiting for another pass.
+- **No input hold test:** the main crank stays live, but small movements neither cancel the
+  gear nor affect its speed. WANDERING freezes the acquired target throughout the bubble.
+  The existing global overspeed rule still cancels the gear and resets earned progress.
+- **Fresh Down only:** holding Down does not repeat attempts or catch automatically. A Down
+  held on discovery must first be released. While the bubble is visible, Down belongs to it;
+  completion, cancellation, and disappearance frames consume it too. Release after the bubble
+  closes and press Down anew to pull the handle. Other buttons keep their existing roles.
+- **Pause/dock:** rotation, retry/confirmation feedback, input, and the run clock freeze.
+  GUARD remains live during active gear entry and only checks crank motion; catching with the
+  crank stopped is allowed. Timer expiry and guard failure take priority over a catch.
+- A new run resets all gear state. Win, loss, quitting, and debug end-screen jumps dismiss it.
+
+`source/gear-mesh.lua` owns timing/retry state; `GearMesh.updateInput` in `main.lua` owns Down
+and awards the real latch. `source/gear-mesh-ui.lua` draws at native **400×240**: body `(28,121)`
+at `186×76`, an upward speech tail, 4px Bayer shadow, a gear centered at `(121,156)` with outer
+radius 18, root radius 16, and inner radius 11. The timer, upper dial, three cards, and MENU
+remain visible. The open prompt hides while the bubble is present. Three chrome/caption images
+and 120 rotor frames (3° steps) are baked once on the first Gear Mesh run and shared thereafter;
+per-frame drawing only blits them and draws the caught tongue.
+
+Native SDK captures of the implemented screen are saved as
+`images/gear-mesh-{spinning,aligned,miss,caught}-400x240.png`. All are exactly 400×240; the Gear
+Mesh subtitle lines measure 77px and 108px against the narrowest 110px card/picker allowance.
+
+GEAR MESH excludes BLACKOUT (hidden timing cue), DECOY (bubble reveals the real spot), KEYPAD and
+DUST JAM (competing spot-confirmation steps), and NITRO (competing balance and timing demands).
+Its seven allowed pairings, including SPOTLIGHT, have weight 0. Forced debug sets can still violate
+these rules; DUST JAM takes confirmation priority over GEAR MESH, which takes priority over KEYPAD.
+
 ---
+
+### 6d. SPOTLIGHT: tilt to inspect
+
+A 160×48 dark inspection window sits inside the existing 186×76 lower-dial bubble. A flashlight
+on the left illuminates the underside of the dial. Tilt left/right to aim its beam and reveal a
+solid 9px pin, then turn the crank to bring that pin to the fixed catch at twelve o'clock.
+The pin's angle is `(target - dialPos) × 3.6` degrees clockwise from the top, so it is a clue to
+the actual current target. It disappears outside the beam. The upper dial, timer, cards and MENU
+remain readable. This does not change latch speed, direction, tolerances, or add a failure condition;
+ordinary clicks and shakes still work even when the pin is dark. No latch count is displayed.
+
+The x accelerometer calibrates a comfortable grip for 400 ms (`HOLD COMFORTABLY`), then the caption
+becomes `TILT TO AIM`. Aim uses an 85 ms exponential filter, 0.018g deadband, 100°/g sensitivity,
+and ±30° bounds. Output selects 2° frames with 0.4° hysteresis. The target is lightable everywhere
+on its 17px orbit around (132,153), from the lamp at (60,156). If acceleration is unavailable,
+Left/Right aims at 50°/s; simulator arrows also enable this fallback while the inspection is visible.
+Arrow entry in another modifier never disables the physical device's tilt input.
+
+Thirty-one beam frames are baked once, with a solid 4° half-width core, a 50% 8° band and a 25%
+12° outer band. The Bayer pattern stays at fixed window pixels as beam geometry changes; no dithered
+bitmap is rotated. Chrome and captions are cached too. The solid pin/glint is the only live geometry.
+Pause/docking freeze the beam. Win, loss and quitting stop the accelerometer.
+
+SPOTLIGHT allows WANDERING (the real pin drifts while stopped), DUST JAM, KEYPAD and GEAR MESH.
+An active confirmation bubble takes priority over the inspection. Inspection returns when that
+bubble closes, showing whichever target is now active.
+The OPEN prompt is hidden beneath inspection while a target remains and returns after the last latch.
+BLACKOUT, NITRO and DECOY are excluded: hidden visuals, competing tilt tasks, and revealing fake spots.
+
+Actual simulator output: [pin hidden](images/spotlight-hidden-400x240.png) ·
+[pin revealed](images/spotlight-revealed-400x240.png), both native 400×240.
+
+### 6e. DUST JAM: clear a stuck spring pin
+
+Finding a real sweet spot at the correct speed/direction snaps the dial to it and reveals a mounted
+spring pin with dust blocking its receiving notch. It reserves that target and pauses WANDERING.
+Discovery is silent and earns no latch. The crank remains one-to-one; no hold-zone test is added,
+but the normal overspeed reset still applies. Earlier latches stay intact between puffs.
+
+The bubble says **BLOW OR HOLD ↑**. **Hold D-pad Up** for 1,400 ms of accumulated clearing to remove
+six visible dust clumps; release and resume freely without losing cleared dust. Up held when the
+challenge opens must first be released, so a held search input cannot start clearing accidentally.
+Air strokes and small cached dust particles show active input. No separate gauge or latch tally.
+
+The microphone starts **automatically when a jam appears**; no A press is required. The first jam
+requests SDK microphone access from the normal update context, then monitors the built-in device
+microphone's level. Playdate may show its own permission dialog if access is needed; it costs no
+run time or GUARD deadline. No audio is recorded or saved. Access is requested at most once per run;
+later pins restart monitoring and calibration automatically. A denied/unavailable microphone changes
+the prompt to **HOLD ↑**; button clearing remains fully usable, including during calibration.
+The former **Ⓐ MIC ON** prompt is removed: the bubble shows **WAIT...** during setup/calibration,
+then a microphone icon while listening. A has no gameplay action.
+
+Before listening for a puff, mute the run music, wait 220 ms for speaker settling, then average the
+room level for 400 ms (`WAIT...`). A level above `max(0.08, baseline × 1.8 + 0.045)` for at least
+80 ms counts as air; it clears at the same rate as Up. The duration rejects brief spikes, and the
+room baseline adjusts the threshold for ambient noise.
+Quiet readings track room changes with a 5-second filter; sustained puffs never teach the baseline.
+This detects volume, not breath, pitch or words. Mechanism ticks are suppressed during the jam.
+GUARD's 1.6-second footstep inhibits microphone clearing and calibration for 1.8 seconds, including
+when the sound began before the jam. Up remains responsive during that interval.
+
+Once clear, monitoring stops **before** the normal latch sound plays. The pin seats, the dial shakes,
+and **K-CHIK!** stays in its bubble for 550 ms. Exactly one real latch is awarded and the next target
+is created normally. No duplicate manga word appears elsewhere. All arrows belong to DUST JAM while
+active, during success and on cancellation; release all arrows after the bubble, then press Down
+anew to pull the handle. Time expiry wins over a last-frame clear. Overspeed cancels the pending jam
+and follows ordinary progress-reset rules.
+
+Pause, docking, the OS menu, sleep, win/loss, quitting and a new run stop microphone monitoring.
+Active jam progress and animation freeze while paused/docked; resuming recalibrates the mic.
+Run music volume restores independently of the pause-menu duck. GUARD and other wall-clock schedules
+are rebased through pauses, docking and the microphone permission dialog.
+
+DUST JAM works with SPOTLIGHT, WANDERING, FOUR TUMBLERS, SCRAMBLED, ONE SHOT and GUARD. It excludes
+BLACKOUT, TOO LOUD, NITRO, DECOY, KEYPAD and GEAR MESH because of invisible prompts, loud speaker
+input, competing physical tasks, revealing fake spots, or competing confirmation inputs.
+
+The bubble keeps the existing (28,121), 186×76 body and shadow ending at y=201, above MENU at y=204.
+Its screwed bracket, spring, pin, notch, seven dust stages, seated state, captions, microphone icons
+and eight particle frames are baked once; live drawing selects and blits images.
+
+Actual simulator output: [calibrating](images/dust-jam-calibrating-400x240.png) ·
+[jammed](images/dust-jam-jammed-400x240.png) ·
+[partly cleared](images/dust-jam-partial-400x240.png) ·
+[pin seated](images/dust-jam-cleared-400x240.png), all native 400×240.
 
 ## 7. Speed gates
 
@@ -412,7 +553,7 @@ At tumbler 1 neither gate can cost progress (there is none), and neither rerolls
 ## 8. The handle (D-pad Down)
 
 D-pad **Down** pulls the handle during play, except while the crank is docked, BLACKOUT is
-opening, or a KEYPAD sequence owns the D-pad:
+opening, or KEYPAD / GEAR MESH / DUST JAM owns the D-pad:
 
 - **All 3 found** → the safe opens.
 - **Otherwise** → `LOCKED!` + a two-note thud, and **progress resets to tumbler 1**.
@@ -454,8 +595,8 @@ half is reserved above the first row so it cannot crowd it.
 - The cursor is `images/hand-cursor.png`, **poking along X** on a sine (0–5px) — it points at the
   live row rather than spinning in place.
 - **Resume** closes · **Quit** slides up to the title.
-- **Modifiers** opens the catalogue of **all 10**, not just the run's three — a reference the
-  player can browse. Two pages of six, laid out 2 columns x 3 rows, each cell carrying the same
+- **Modifiers** opens the catalogue of **all 13**, not just the run's three — a reference the
+  player can browse. Three pages of up to six, laid out 2 columns x 3 rows, each cell carrying the same
   icon + title + subtitle as a door card. Left/Right (or Up/Down) flips pages, Ⓐ or Ⓑ goes back.
 - The panel is sized to its content: `menuBox()` measures **every** string that has to fit, each in
   the font it will be drawn in — including the subtitles, which are wider than the names above them.
@@ -657,7 +798,7 @@ the dial uses the 10px cut.
 
 ## 12. Modifiers
 
-Ten active modifiers. **Every normal run draws 3.** Their effects are implemented below.
+Thirteen active modifiers. **Every normal run draws 3.** Their effects are implemented below.
 
 ### The set
 
@@ -673,6 +814,9 @@ Ten active modifiers. **Every normal run draws 3.** Their effects are implemente
 | 11 | **GUARD** | Event | `fail` | `bell` | Footsteps: stop cranking within 3 s or you're caught |
 | 12 | **NITRO** | Body | `fail` | `flask` | Tilt left/right to keep the liquid from spilling; a spill ends the run |
 | 13 | **KEYPAD** | Input | — | six-button keypad | Hold a found spot while entering four visible D-pad arrows to latch it |
+| 14 | **GEAR MESH** | Input | — | gear | At each found spot, catch an automatic gear's gap at the top with Down; misses keep earlier latches |
+| 15 | **SPOTLIGHT** | Body | — | flashlight | Tilt a light inside the dial to reveal a pin marking the current sweet spot |
+| 16 | **DUST JAM** | Input | — | microphone | Blow or hold Up to remove dust from a found spot's spring pin, then earn its latch |
 
 ### Player-facing descriptions
 
@@ -692,6 +836,9 @@ and debug picker. Each line fits the narrowest text column (110 px) in Nontendo-
 | GUARD | When you hear steps, | stop for 3 seconds. |
 | NITRO | Tilt to keep the | liquid from spilling. |
 | KEYPAD | Hold the dial still. | Enter the arrows. |
+| GEAR MESH | Wait for the gap. | Press Down to catch it. |
+| SPOTLIGHT | Tilt to reveal the pin. | Crank to find its spot. |
+| DUST JAM | Puff the dust away. | Free the stuck pin. |
 
 The clicks in this copy are the sweet-spot sounds taught in the tutorial, not the quiet ticks
 while the crank turns. TOO LOUD mutes those sounds, so it directs attention to the dial shake.
@@ -708,7 +855,8 @@ four from [Pictogrammers Memory](https://github.com/Pictogrammers/Memory). Asset
 `source/modifiers.lua` carries the catalogue (id, name, sub, icon, axis, tags), the icon loaders,
 the pair-scoring rules as `Mods.pairClass` / `Mods.score` / `Mods.roll`, and per-run configuration
 through `Mods.buildCfg`. Effect behavior lives in `main.lua`. Its rule tables reproduce the
-41 banned / 25 hard / 54 normal split stated below; change the two together.
+152 banned / 28 hard / 106 normal split stated below; change the two together. KEYPAD, GEAR MESH,
+SPOTLIGHT and DUST JAM icons are procedural 14×14 images cached alongside the twelve original assets.
 
 ### Modes and combinations
 
@@ -722,22 +870,22 @@ is now judged directly, per pair, and drives two modes.
 | **banned** | — | Impossible, overloaded, or the combination defeats a modifier's purpose. Never offered in normal rolls |
 | **hard ×2** | 2 | On its own makes a run hard mode |
 | **hard ×1** | 1 | Needs a second friction to qualify |
-| normal | 0 | Everything else — 28 of the 45 pairs |
+| normal | 0 | Everything else — 48 of the 78 pairs |
 
 **A drawn triple is scored by its three pairs:** any banned pair → discard; total ≥ 2 → **HARD**;
 otherwise → **NORMAL**.
 
-**120 possible triples → 41 banned, 25 hard, 54 normal. 79 playable runs.**
+**286 possible triples → 152 banned, 28 hard, 106 normal. 134 playable runs.**
 
-**Ten active modifiers.** HAIR TRIGGER, GREASED and STICKY were cut after playtesting: all
+**Thirteen active modifiers.** HAIR TRIGGER, GREASED and STICKY were cut after playtesting: all
 three were the same idea — degrade the player's control of the dial — and the loop already
 punishes speed errors brutally, since a graze and an over-speed both wipe progress. So they never
 added a challenge, they multiplied an existing punishment. They failed the test the rest of the
 set passes: **a modifier has to hand the player a new way to play, not worse hands.** Revising was
 not an option, because every "make the dial harder to control" idea lands in the same place.
-KEYPAD fills one replacement slot; two remain open.
+KEYPAD, GEAR MESH, SPOTLIGHT and DUST JAM add distinct confirmation, inspection and hardware interactions.
 
-#### Banned — incompatible or counterproductive (6 pairs)
+#### Banned — incompatible or counterproductive (19 pairs)
 
 | Pair | Why |
 |---|---|
@@ -747,6 +895,19 @@ KEYPAD fills one replacement slot; two remain open.
 | KEYPAD + BLACKOUT | The required visible arrow sequence cannot be read |
 | KEYPAD + NITRO | User-requested ergonomic exclusion: holding the dial, entering arrows, and balancing liquid overload the hands |
 | KEYPAD + DECOY | A bubble appears only at real spots, immediately giving the fake away. Excluded to preserve DECOY's purpose, not because the pair is too hard |
+| GEAR MESH + BLACKOUT | The rotating gap and fixed catch cannot be read |
+| GEAR MESH + DECOY | The gear bubble would immediately identify a real spot |
+| GEAR MESH + KEYPAD | Both replace the same spot-confirmation step and own the D-pad |
+| GEAR MESH + NITRO | Reading a timing cue and pressing Down while balancing liquid overloads the interaction |
+| SPOTLIGHT + BLACKOUT | The inspection window conflicts with the hidden-dial premise |
+| SPOTLIGHT + NITRO | Two competing tilt tasks |
+| SPOTLIGHT + DECOY | Showing the real pin exposes the fake |
+| DUST JAM + BLACKOUT | The stuck pin and clearing instructions cannot be seen |
+| DUST JAM + TOO LOUD | The loud speaker contaminates microphone input |
+| DUST JAM + NITRO | Clearing dust while balancing liquid overloads physical input |
+| DUST JAM + DECOY | The jam identifies a real spot |
+| DUST JAM + KEYPAD | Competing confirmation bubbles and arrow ownership |
+| DUST JAM + GEAR MESH | Competing confirmation bubbles and arrow ownership |
 
 #### Hard ×2 — stacked death (3 pairs)
 
@@ -788,8 +949,10 @@ the new buzz is a concrete sound-design change, not a claim that measurements pr
 - **FOUR TUMBLERS:** four spots, each with the same four-input code length.
 - **ONE SHOT:** only a separate fresh Down outside entry can pull the handle. A wrong arrow
   or a Down on a completion/cancellation frame never becomes a fatal handle pull.
+- **SPOTLIGHT:** inspection helps locate the spot, then the code bubble takes its place during
+  entry. The beam adds no latch requirement and takes no arrows from the code.
 
-These six new allowed pairs have weight 0; existing pair weights still determine the triple's
+These seven allowed pairs have weight 0; existing pair weights still determine the triple's
 mode. Extra typing alone does not create a hidden speed requirement or a new instant loss.
 
 #### BLACKOUT and other UI tells
@@ -917,6 +1080,9 @@ needs a special case at its call site.
 | `tumblers` | `3` | FOUR TUMBLERS → `4` |
 | `randomDirs` | `false` | SCRAMBLED |
 | `keypad` | `false` | KEYPAD requires four D-pad inputs after finding each real spot |
+| `gearMesh` | `false` | GEAR MESH requires a timed Down catch after finding each real spot |
+| `spotlight` | `false` | SPOTLIGHT adds a tilt-aimed inspection window during search |
+| `dustJam` | `false` | DUST JAM requires clearing the spring pin after finding each real spot |
 | `drift` | `0` | WANDERING → `Mods.MAX_DRIFT` (5) |
 | `decoy` `oneShot` `guard` `nitro` | `false` | their own modifiers |
 
@@ -930,9 +1096,13 @@ needs a special case at its call site.
   and missing shake are its two tells. A fixed position is guaranteed when DECOY is active.
 - **WANDERING** — `driftTargets`, only while the dial is under `DEAD_SPEED`. The active real
   target moves at 5 units/sec, reflecting at 18-unit clearance from the fixed decoy; it pauses
-  while a KEYPAD bubble is open.
+  while a KEYPAD, GEAR MESH or DUST JAM bubble is open.
 - **KEYPAD** — `checkTumbler` enters/validates the hold; `Keypad.updateInput` consumes arrows;
   `latchTarget` awards the real latch after completion. See §6b.
+- **GEAR MESH** — `checkTumbler` reveals the automatic gear; `GearMesh.update` advances active
+  time, `GearMesh.updateInput` consumes Down, and `latchTarget` awards a caught gear. See §6c.
+- **SPOTLIGHT** — `Spotlight.update/pin` transforms filtered tilt and the real target into an inspection clue; `SpotlightUI` blits fixed-grid beam frames. See §6d.
+- **DUST JAM** — `checkTumbler` reserves the pin, `DustJam.updateInput/update` handles automatic microphone setup and microphone or Up clearing, and `latchTarget` awards success. See §6e.
 - **GUARD** — `updateGuard`. A footstep every 5–9 s, then `GUARD_GRACE_MS` (3000) to stop. Still
   moving when the grace expires and the run ends. The grace is what makes an audio-only hard-fail
   fair. The ambience bed sits well back at **0.26** so the steps cut through it: missing one is a
@@ -946,15 +1116,23 @@ needs a special case at its call site.
 same slide-down as a time-out with a different word: `CAUGHT!` for ONE SHOT and GUARD, `BOOM!` for
 NITRO. The lose panel draws `cfg.tumblers` dots, not always three, and lists `Run.mods` under them.
 
-**Validation scope.** Automated checks exercise target placement, complete runs, resets, keypad
-input ownership, and modifier compatibility. The ten-modifier catalogue has 41 banned / 25 hard /
-54 normal triples. Hold tolerance, bubble readability, and error-sound balance still need playtesting
+**Validation scope.** Automated checks exercise target placement, complete runs, resets, keypad,
+gear and dust input ownership, timing, microphone lifecycle/noise handling, tilt calibration, and modifier compatibility. The thirteen-modifier catalogue has
+152 banned / 28 hard / 106 normal triples. Hold/catch tolerance and error-sound balance need playtesting
 on the physical device; passing logic checks does not establish their feel.
 
-The input suite passes 25 groups / 505,865 checks. SDK render checks cover the full-game bubble,
-accepted arrows, retry, Down prompt, both tutorial panels, modifier picker, and audio mixer.
-The simulator renders those screens but crashes on its scripted exit; an unchanged HEAD build
-reproduces that exit crash too. The isolated graphics-only preview exits cleanly.
+`luajit tests/dust-jam.lua` passes 63 groups / 510,400 invariant checks, including the ordinary
+spot, KEYPAD, GEAR MESH, microphone/Up, and integrated SPOTLIGHT suites. `luajit tests/spotlight.lua`
+adds 7 focused groups / 6,629 checks for calibration, smoothing, fallback and pin geometry.
+The SDK compiler builds the shipping source successfully. Native simulator captures cover the
+hidden/revealed pin, microphone calibration, dusty/partial/seated spring pin, and the catalogue/debug picker's new pages.
+The simulator was closed after capture. Screenshots use scripted crank/buttons through the actual
+game renderer in a temporary test build; capture scripting is absent from the shipping build.
+The automatic microphone flow was also checked against the real simulator SDK: its access dialog
+appeared, accepting it started calibration, and the mic icon appeared without an in-game A press.
+
+The production build was copied to the connected Playdate and all 47 files hash-verified before
+launching it. Microphone sensitivity, tilt comfort and frame cost still need hands-on device testing.
 
 ### Debug modifier picker
 
@@ -971,7 +1149,7 @@ tumbler count it reads are already set — so what you inspect is the shipping s
 it. The four end states are the only screens worth a jump: the title is already one Ⓑ away, the
 docked notice appears by docking the crank, and the rest are reachable by playing.
 
-**Modifiers** is the picker. A 2×3 grid over two pages of all modifiers; d-pad moves, Ⓐ toggles,
+**Modifiers** is the picker. A 2×3 grid over three pages of all modifiers; d-pad moves, Ⓐ toggles,
 Ⓑ backs out to Debug. The cursor runs past the last modifier onto a **START** button, which only goes live
 on exactly three picks — confirming is its own deliberate move, so a mis-tap on the third
 modifier costs nothing. The header counts the picks and, once there are three, names the verdict
@@ -981,6 +1159,7 @@ the pair rules give them.
 selection.
 
 The cursor **inverts** a cell and a pick **outlines** it, so both states read at once.
+Both highlights cover the full two-line subtitle, including SPOTLIGHT and DUST JAM's bottom line.
 
 **Illegal sets are deliberately allowed.** Being able to force BLACKOUT + TOO LOUD and watch what
 actually happens is the whole reason the tool exists, so the header labels the selection `BANNED`
@@ -1246,7 +1425,11 @@ progress resets in the same place. Once every real spot is found, it stops firin
 
 **13 · KEYPAD** — the four-arrow spot confirmation in §6b. Wrong arrows retry only the code;
 leaving the hold area requires reacquiring the same target. Its bubble is the visual layer;
-BLACKOUT, NITRO, and DECOY are excluded from normal rolls with it.
+BLACKOUT, NITRO, DECOY, GEAR MESH and DUST JAM are excluded from normal rolls with it.
+
+**14 · GEAR MESH** — the automatic gear catch in §6c. Wait for its gap at the top and tap Down.
+Misses retry the same gear with earlier clicks intact; a catch earns one normal real latch.
+WANDERING pauses while its bubble is visible. BLACKOUT, NITRO, DECOY, KEYPAD and DUST JAM are excluded.
 
 **10 · ONE SHOT** — `tryHandle`'s failure branch jumps straight to lose, with a `CAUGHT` end
 screen. UI detail: the **↓ Open? element trembles** — a fast, small, indefinitely repeating
@@ -1263,18 +1446,27 @@ like a glass of water. A damped spring on the surface angle gives the slosh; the
 level as the device tilts. Rendered as a dithered fill so the game stays readable underneath.
 Tilt past the limit and it spills — run over.
 
+**15 · SPOTLIGHT** — the tilt-aimed inspection clue in §6d. Crank rules remain unchanged.
+
+**16 · DUST JAM** — the microphone/Up spring-pin clearing challenge in §6e. Partial clearing persists between puffs; success earns one real latch.
+
 ### Axes (descriptive only)
 
-Perception 2 · Memory 3 · Risk 2 · Event 1 · Body 1 · Input 1 — **Motor is empty**
+Perception 2 · Memory 3 · Risk 2 · Event 1 · Body 2 · Input 3 — **Motor is empty**
 
-Kept as a way to talk about what a modifier twists, and as a rough guide when adding new ones —
-Event and Body have one member each, so those are the thin spots. They no longer gate any draw.
+Kept as a way to talk about what a modifier twists, and as a rough guide when adding new ones.
+Event has one member and Motor has none. Axes do not gate any draw.
 
 ---
 
 ## 12b. Also not built yet
 
 Score/best-time persistence, any story or characters, and no index pointer on the dial (§5).
+
+Eight remaining modifier proposals live in [modifier-ideas.md](modifier-ideas.md), alongside the
+concept history for the implemented SPOTLIGHT and DUST JAM. Those eight proposals are not active
+rules. Any future mockup must work first at native 400×240, with existing readable fonts and the
+actual HUD space; enlarged previews use integer pixel scaling.
 
 ---
 
@@ -1285,11 +1477,17 @@ Score/best-time persistence, any story or characters, and no index pointer on th
                     Run.mods / Run.has(id) — the rolled modifiers, for the effects work
       dial.lua      Art.*  — dial, vault door, dial well, timer plate, modifier cards,
                     manga SFX baking, progress dots, fonts, icons
-      modifiers.lua Mods.* — the 10 modifiers, their icons, pair scoring. Data + art only
+      modifiers.lua Mods.* — the 13 modifiers, their icons, pair scoring. Data + art only
       tutorial.lua  Tutorial.* — lesson prompts, error feedback, cached guidance plates
       spots.lua     Spots.* — guaranteed active-target placement and drift around the fixed decoy
       keypad.lua    Keypad.* — one four-arrow code per real target, progress and retry state
       keypad-ui.lua KeypadUI.* — cached speech bubble, arrow cells, signed hold-range marker
+      gear-mesh.lua GearMesh.* — automatic gear timing, catch window, retry/confirmation state
+      gear-mesh-ui.lua GearMeshUI.* — native-resolution bubble and baked rotating gear frames
+      spotlight.lua Spotlight.* — filtered tilt, beam selection, real-pin projection
+      spotlight-ui.lua SpotlightUI.* — cached fixed-grid inspection light and solid pin
+      dust-jam.lua DustJam.* — dust progress, input-level filtering, microphone lifecycle
+      dust-jam-ui.lua DustJamUI.* — cached spring-pin/dust stages and input prompts
       images/modifiers/          12 standalone 14x14 icons
       images/mod-icons-table-14-14.png  the same 12 as an imagetable (loads as images/mod-icons)
       sound.lua   Sfx.*  — samples, synths, BGM, and Sfx.mix: every level in the game
@@ -1300,6 +1498,10 @@ Score/best-time persistence, any story or characters, and no index pointer on th
 Run `luajit tests/keypad.lua` from the project root for the input/state/compatibility suite,
 including the placement, complete runs, fixed decoys, resets, SCRAMBLED, and WANDERING checks
 from `tests/spots.lua` against the game logic.
+Run `luajit tests/gear-mesh.lua` for the combined suite including Gear Mesh timing, catch/miss,
+pause/docking, final-Down ownership, reset/expiry, complete runs, and compatibility checks.
+Run `luajit tests/dust-jam.lua` for the combined game/input/microphone regression suite, and
+`luajit tests/spotlight.lua` for sensor filtering, beam geometry and pin-reveal checks.
 `scripts/build-decoy-sound.py` rebuilds the click-and-buzz sample; see §12 for its comparison option.
 
 ---
@@ -1365,7 +1567,7 @@ The cards were the cost: three concave-polygon fills each, plus `drawTextInRect`
 
 **The rule: nothing static gets drawn per frame.** The door, the dial well, the timer plate chrome
 and the three modifier cards are drawn once into `bgImage` at `startGame()` and blitted. Only the
-dial (it rotates), the timer digits, the Down prompt, KEYPAD bubble and the manga SFX are live. `bgImage` is
+dial (it rotates), the timer digits, the Down prompt, KEYPAD / GEAR MESH / DUST JAM / SPOTLIGHT bubbles and the manga SFX are live. `bgImage` is
 invalidated by setting it to `nil` — do that if anything static changes mid-run.
 The first tutorial's guidance is a separate cached image selected on progress/error changes;
 the BLACKOUT tutorial's static guide is baked alongside its modifier card.

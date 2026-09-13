@@ -47,6 +47,8 @@ env.playdate = {
     getCurrentTimeMilliseconds = function() return elapsed end,
     startAccelerometer = function() end,
     stopAccelerometer = function() end,
+    readAccelerometer = function() return 0, 0, 1 end,
+    sound = { micinput = {} },
 }
 env.pd = env.playdate
 env.Run = {}
@@ -58,6 +60,9 @@ env.Tutorial = {
     feedback = function(_, kind) events.feedback = kind end,
 }
 env.KeypadUI = { reset = function() end }
+env.GearMeshUI = { reset = function() end }
+env.DustJamUI = { reset = function() end }
+env.SpotlightUI = { reset = function() end }
 env.sfxImages = { reset = {}, kchik = {}, kchunk = {}, locked = {}, toofast = {}, caught = {}, boom = {} }
 env.placeAround = function() return 100, 100 end
 env.addEffect = function() end
@@ -71,6 +76,9 @@ for _, name in ipairs({ "TOL", "RESET_SPEED", "DEAD_SPEED", "TICK_STEP", "GAME_M
 end
 loadInto(read("source/spots.lua"), "source/spots.lua", env)
 loadInto(read("source/keypad.lua"), "source/keypad.lua", env)
+loadInto(read("source/gear-mesh.lua"), "source/gear-mesh.lua", env)
+loadInto(read("source/dust-jam.lua"), "source/dust-jam.lua", env)
+loadInto(read("source/spotlight.lua"), "source/spotlight.lua", env)
 loadInto(read("source/modifiers.lua"), "source/modifiers.lua", env)
 for _, name in ipairs({ "now", "wrapDist", "spawnTarget", "startGame", "unitsPerSec", "resetProgress", "loseRun", "openSafe", "tryHandle", "checkDecoy", "latchTarget", "checkTumbler", "driftTargets" }) do
     loadInto(extract(name), "main.lua:" .. name, env)

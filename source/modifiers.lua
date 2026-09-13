@@ -1,4 +1,4 @@
--- Safu modifier catalogue — the 10 modifiers of game.md §12, their icons, and the
+-- Safu modifier catalogue — the 13 modifiers of game.md §12, their icons, and the
 -- combination rules that decide which triples are legal.
 --
 -- Data, art, the legality rules, and Mods.buildCfg — which turns a rolled set into
@@ -65,6 +65,9 @@ Mods.list = {
     { id = "guard",         name = "GUARD",         sub = "When you hear steps,\nstop for 3 seconds.", axis = "event",      tags = { "fail" },    icon = "peaked-cap" },
     { id = "nitro",         name = "NITRO",         sub = "Tilt to keep the\nliquid from spilling.", axis = "body",       tags = { "fail" },    icon = "flask" },
     { id = "keypad",        name = "KEYPAD",        sub = "Hold the dial still.\nEnter the arrows.", axis = "input",       tags = {},            icon = "keypad" },
+    { id = "gear-mesh",     name = "GEAR MESH",     sub = "Wait for the gap.\nPress Down to catch it.", axis = "input",       tags = {},            icon = "gear" },
+    { id = "spotlight",     name = "SPOTLIGHT",     sub = "Tilt to reveal the pin.\nCrank to find its spot.", axis = "body",        tags = {},            icon = "flashlight" },
+    { id = "dust-jam",      name = "DUST JAM",      sub = "Puff the dust away.\nFree the stuck pin.", axis = "input",       tags = {},            icon = "microphone" },
 }
 
 Mods.byId = {}
@@ -81,6 +84,51 @@ end
 
 -- One icon as an image, by icon id ("crosshair") — from the imagetable.
 function Mods.iconImage(iconId)
+    if iconId == "flashlight" or iconId == "microphone" then
+        if not singles[iconId] then
+            local image = gfx.image.new(14, 14)
+            gfx.pushContext(image)
+                gfx.setColor(gfx.kColorBlack)
+                gfx.setLineWidth(1)
+                if iconId == "flashlight" then
+                    gfx.fillRect(0, 6, 6, 4)
+                    gfx.fillPolygon(5, 6, 9, 3, 9, 12, 5, 9)
+                    gfx.drawLine(11, 3, 13, 1)
+                    gfx.drawLine(11, 7, 13, 7)
+                    gfx.drawLine(11, 11, 13, 13)
+                else
+                    gfx.fillRoundRect(5, 0, 5, 8, 2)
+                    gfx.drawLine(3, 5, 3, 8)
+                    gfx.drawLine(11, 5, 11, 8)
+                    gfx.drawLine(3, 8, 5, 10)
+                    gfx.drawLine(5, 10, 9, 10)
+                    gfx.drawLine(9, 10, 11, 8)
+                    gfx.drawLine(7, 10, 7, 13)
+                    gfx.drawLine(4, 13, 10, 13)
+                end
+            gfx.popContext()
+            singles[iconId] = image
+        end
+        return singles[iconId]
+    end
+    if iconId == "gear" then
+        if not singles.gear then
+            local image = gfx.image.new(14, 14)
+            gfx.pushContext(image)
+                gfx.setColor(gfx.kColorBlack)
+                gfx.fillCircleAtPoint(7, 7, 5)
+                for i = 0, 7 do
+                    local a = i * math.pi / 4
+                    gfx.fillRect(math.floor(6 + math.sin(a) * 6 + 0.5),
+                        math.floor(6 - math.cos(a) * 6 + 0.5), 2, 2)
+                end
+                gfx.setColor(gfx.kColorClear)
+                gfx.fillCircleAtPoint(7, 7, 2)
+            gfx.popContext()
+            singles.gear = image
+        end
+        return singles.gear
+    end
     if iconId == "keypad" then
         if not singles.keypad then
             local image = gfx.image.new(14, 14)
@@ -142,6 +190,19 @@ local banned = pairs_(Mods.BANNED, {
     { "keypad", "blackout" },
     { "keypad", "nitro" },
     { "keypad", "decoy" },
+    { "gear-mesh", "blackout" },
+    { "gear-mesh", "nitro" },
+    { "gear-mesh", "decoy" },
+    { "gear-mesh", "keypad" },
+    { "spotlight", "blackout" },
+    { "spotlight", "nitro" },
+    { "spotlight", "decoy" },
+    { "dust-jam", "blackout" },
+    { "dust-jam", "too-loud" },
+    { "dust-jam", "nitro" },
+    { "dust-jam", "decoy" },
+    { "dust-jam", "keypad" },
+    { "dust-jam", "gear-mesh" },
 })
 
 -- Weight 2: two ways to lose instantly in one run.
@@ -227,7 +288,8 @@ function Mods.buildCfg(mods)
         -- motor
         maxEngage = 25,
         -- the puzzle
-        tumblers = 3, randomDirs = false, drift = 0, decoy = false, keypad = false,
+        tumblers = 3, randomDirs = false, drift = 0, decoy = false, keypad = false, gearMesh = false,
+        spotlight = false, dustJam = false,
         -- run-ending conditions
         oneShot = false, guard = false, nitro = false,
     }
@@ -246,6 +308,9 @@ function Mods.buildCfg(mods)
     if has["one-shot"] then c.oneShot = true end
     if has["nitro"] then c.nitro = true end
     if has["keypad"] then c.keypad = true end
+    if has["gear-mesh"] then c.gearMesh = true end
+    if has["spotlight"] then c.spotlight = true end
+    if has["dust-jam"] then c.dustJam = true end
     return c
 end
 
