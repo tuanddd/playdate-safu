@@ -18,11 +18,36 @@ Art.dialFont = gfx.font.new("fonts/Roobert-10-Bold")   -- dial numerals
 Art.sfxFont = gfx.font.new("fonts/Bouncy-30")          -- manga SFX
 Art.timerFont = gfx.font.new("fonts/Roobert-20-Medium")-- win panel readout
 
-Art.titleBg = gfx.image.new("images/title-screen-bg")
 Art.iconClock14 = gfx.image.new("images/clock-14")
 Art.iconHand = gfx.image.new("images/hand-cursor")
 Art.iconA = gfx.image.new("images/btn-a-14")
 Art.iconB = gfx.image.new("images/btn-b-14")
+
+local function optImage(path)
+    if playdate.file.exists(path .. ".pdi") then return gfx.image.new(path) end
+end
+
+local function optSlice(path, inset, mid)
+    if playdate.file.exists(path .. ".pdi") then
+        return gfx.nineSlice.new(path, inset, inset, mid, mid)
+    end
+end
+
+Art.playBg = optImage("images/play-bg")
+Art.titleNeko = optImage("images/title-neko")
+Art.titleBg = Art.titleNeko or gfx.image.new("images/title-screen-bg")
+Art.endArt = {
+    win = optImage("images/end-win"),
+    timeup = optImage("images/end-timeup"),
+    caught = optImage("images/end-caught"),
+    boom = optImage("images/end-boom"),
+}
+Art.plaque = optSlice("images/plaque", 12, 8)
+Art.panel = optSlice("images/panel", 16, 8)
+Art.chip = optSlice("images/chip", 6, 4)
+Art.PLAQUE_SHADOW = 3
+Art.PANEL_SHADOW = 4
+Art.CHIP_SHADOW = 2
 
 local FADES <const> = { 0.80, 0.60, 0.42, 0.26, 0.12 }
 local WIGGLE <const> = { 13, -10, 7, -4, 2, 0 }
@@ -40,8 +65,11 @@ local function makeNumberImage(text)
     return img
 end
 
+local numRot = {}
+
 for n = 0, 90, 10 do
     numImages[n] = makeNumberImage(string.format("%02d", n))
+    numRot[n] = {}
 end
 
 local function outlinedText(font, text, ring)
@@ -120,6 +148,15 @@ function Art.drawDial(cx, cy, r, pos)
     gfx.fillCircleAtPoint(cx, cy, r + rim)
     gfx.setColor(gfx.kColorWhite)
     gfx.fillCircleAtPoint(cx, cy, r)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setDitherPattern(0.8, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillCircleAtPoint(cx, cy, nr - 9)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.setLineWidth(3)
+    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+    gfx.drawArc(cx, cy, r - 2, 95, 200)
+    gfx.setColor(gfx.kColorBlack)
+    gfx.drawCircleAtPoint(cx, cy, nr - 9)
 
     gfx.setColor(gfx.kColorWhite)
     gfx.setLineWidth(2)
@@ -151,12 +188,25 @@ function Art.drawDial(cx, cy, r, pos)
     for n = 0, 90, 10 do
         local ang = (pos - n) * 3.6
         local a = math.rad(ang)
-        numImages[n]:drawRotated(cx + math.sin(a) * nr, cy - math.cos(a) * nr, ang)
+        local idx = math.floor(pos - n + 0.5) % 100
+        local img = numRot[n][idx]
+        if not img then
+            img = numImages[n]:rotatedImage(idx * 3.6)
+            numRot[n][idx] = img
+        end
+        img:drawCentered(cx + math.sin(a) * nr, cy - math.cos(a) * nr)
     end
 
+    gfx.setColor(gfx.kColorWhite)
+    gfx.setLineWidth(1)
+    gfx.drawArc(cx, cy, r + rim - 2, 285, 345)
     gfx.setColor(gfx.kColorBlack)
     gfx.fillCircleAtPoint(cx, cy, hub)
+    gfx.setDitherPattern(0.55, gfx.image.kDitherTypeBayer4x4)
+    gfx.fillCircleAtPoint(cx, cy, hub - 2)
     gfx.setColor(gfx.kColorWhite)
+    gfx.setLineWidth(1)
+    gfx.drawArc(cx, cy, hub - 2, 290, 350)
     gfx.setLineWidth(3)
     for i = 0, 3 do
         local a = math.rad(pos * 3.6 + i * 90)
@@ -268,6 +318,10 @@ end
 
 -- Black surround, white door plate, engraved inner frame, rivets.
 function Art.drawDoor()
+    if Art.playBg then
+        Art.playBg:draw(0, 0)
+        return
+    end
     gfx.clear(gfx.kColorBlack)
     gfx.setColor(gfx.kColorWhite)
     gfx.fillRect(3, 3, 394, 234)
@@ -290,6 +344,7 @@ end
 
 -- The dial sits in a shallow dithered recess.
 function Art.drawDialWell(cx, cy, r)
+    if Art.playBg then return end
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.25, gfx.image.kDitherTypeBayer4x4)
     gfx.fillCircleAtPoint(cx, cy, r)
@@ -307,15 +362,36 @@ local TIMER_REF <const> = "00:00.00"
 -- The plate chrome only: black plate, checkered offset shadow, clock glyph.
 -- Static for the whole run, so it can be baked into the background image.
 -- Returns where the digits go, and the plate size.
+local TIMER_WIN <const> = { x = 22, y = 18, w = 98, h = 28 }
+
 function Art.drawTimerPlate(x, y)
     local rw = Art.numFont:getTextWidth(TIMER_REF)
+    if Art.playBg then
+        gfx.setClipRect(TIMER_WIN.x - 8, TIMER_WIN.y - 8, TIMER_WIN.w + 17, TIMER_WIN.h + 13)
+        Art.playBg:draw(0, 0)
+        gfx.clearClipRect()
+        local cw = 14 + 6 + rw
+        local ix = TIMER_WIN.x + (TIMER_WIN.w - cw) // 2
+        local cy = TIMER_WIN.y + TIMER_WIN.h // 2
+        gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        Art.iconClock14:draw(ix, cy - 7)
+        local inkTop, inkH = Art.inkBand(Art.numFont, Art.DIGITS)
+        return ix + 20, cy - inkH // 2 - inkTop, TIMER_WIN.w, TIMER_WIN.h
+    end
     local h = math.max(24, Art.numFont:getHeight() + 8)
     local w = 6 + 14 + 6 + rw + 8
     gfx.setColor(gfx.kColorBlack)
-    gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
-    gfx.fillRoundRect(x + 4, y + 4, w, h, 4)
-    gfx.setColor(gfx.kColorBlack)
+    if not Art.playBg then
+        gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+        gfx.fillRoundRect(x + 4, y + 4, w, h, 4)
+        gfx.setColor(gfx.kColorBlack)
+    end
     gfx.fillRoundRect(x, y, w, h, 4)
+    if Art.playBg then
+        gfx.setColor(gfx.kColorWhite)
+        gfx.drawRoundRect(x + 2, y + 2, w - 4, h - 4, 3)
+        gfx.setColor(gfx.kColorBlack)
+    end
     gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
     Art.iconClock14:draw(x + 6, y + math.floor((h - 14) / 2))
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
@@ -326,7 +402,7 @@ end
 -- The digits, redrawn every frame over the baked plate.
 function Art.drawTimerText(tx, ty, text)
     gfx.setFont(Art.numFont)
-    gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+    gfx.setImageDrawMode(Art.playBg and gfx.kDrawModeFillBlack or gfx.kDrawModeFillWhite)
     gfx.drawText(text, tx, ty)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
@@ -337,6 +413,10 @@ end
 -- A white plate with scooped corners over a checkered shadow offset down-right.
 -- Used by the modifier cards and by the pause menu, so they read as one family.
 function Art.drawPlate(x, y, w, h)
+    if Art.plaque then
+        Art.plaque:drawInRect(x, y, w + Art.PLAQUE_SHADOW, h + Art.PLAQUE_SHADOW)
+        return
+    end
     local n <const> = CARD_NOTCH
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
@@ -352,6 +432,10 @@ end
 
 -- Square-cornered plate for the pause menu — same checkered shadow, no scoops.
 function Art.drawPanel(x, y, w, h)
+    if Art.panel then
+        Art.panel:drawInRect(x, y, w + Art.PANEL_SHADOW, h + Art.PANEL_SHADOW)
+        return
+    end
     gfx.setColor(gfx.kColorBlack)
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.fillRect(x + 4, y + 4, w, h)
@@ -363,8 +447,36 @@ function Art.drawPanel(x, y, w, h)
     gfx.setLineWidth(1)
 end
 
+Art.TAG_H = 17
+
+function Art.drawTag(x, y, icon, text, font)
+    font = font or Art.titleFont
+    local inkTop, inkH = Art.inkBand(font, Art.CAPS)
+    local tw = font:getTextWidth(text)
+    local iw = icon and 14 + 5 or 0
+    gfx.setImageDrawMode(gfx.kDrawModeCopy)
+    if icon then icon:draw(x, y + math.floor((Art.TAG_H - 14) / 2)) end
+    gfx.setFont(font)
+    gfx.drawText(text, x + iw, y + math.floor((Art.TAG_H - inkH) / 2) - inkTop)
+    return iw + tw
+end
+
+function Art.drawLeader(x0, x1, y)
+    gfx.setColor(gfx.kColorBlack)
+    for x = x0, x1, 3 do gfx.fillRect(x, y, 1, 1) end
+end
+
 function Art.drawModCard(x, y, w, h, icon, title, sub)
     Art.drawPlate(x, y, w, h)
+    if Art.plaque then
+        local tx, ty = x + 13, y + 6
+        local tw = Art.drawTag(tx, ty, icon, title)
+        Art.drawLeader(tx + tw + 4, x + w - 14, ty + Art.TAG_H // 2)
+        gfx.setFont(Art.subFont)
+        local lineH = Art.subFont:getHeight()
+        gfx.drawTextInRect(sub, tx, ty + Art.TAG_H + 3, w - 24, lineH * 2)
+        return
+    end
 
     -- Row 1 is [icon | title], the 14x14 icon drawn 1:1 and centred against the
     -- title's line. Row 2 is the subtitle, one size down, wrapped to 2 lines.

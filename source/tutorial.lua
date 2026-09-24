@@ -37,25 +37,46 @@ function Tutorial.draw(step, tumbler, x, y, w, h, gap)
                 local mod = Mods.byId.blackout
                 Art.drawModCard(0, 0, w, h, Mods.iconImage(mod.icon), mod.name, mod.sub)
                 Art.drawPlate(0, gap, w, h + gap)
-                gfx.setFont(Art.titleFont)
-                gfx.drawText("TUTORIAL 2/2", 10, gap + 10)
-                gfx.drawLine(10, gap + 28, w - 10, gap + 28)
+                local ty = 36
+                if Art.plaque then
+                    local tw = Art.drawTag(13, gap + 6, nil, "TUTORIAL 2/2")
+                    Art.drawLeader(13 + tw + 4, w - 14, gap + 6 + Art.TAG_H // 2)
+                    ty = 30
+                else
+                    gfx.setFont(Art.titleFont)
+                    gfx.drawText("TUTORIAL 2/2", 10, gap + 10)
+                    gfx.drawLine(10, gap + 28, w - 10, gap + 28)
+                end
                 gfx.setFont(Art.subFont)
-                gfx.drawText("Turn clockwise slowly.\nAfter clicks 1 and 2,\nturn the other way.\nOn click 3, press Down.\nIf progress resets,\nstart clockwise again.", 10, gap + 36)
+                gfx.drawText("Turn clockwise slowly.\nAfter clicks 1 and 2,\nturn the other way.\nOn click 3, press Down.\nIf progress resets,\nstart clockwise again.", 12, gap + ty)
             else
                 local prompt = prompts[key]
                 Art.drawPlate(0, 0, w, fullH)
-                gfx.setFont(Art.titleFont)
-                gfx.drawText("TUTORIAL 1/2", 10, 10)
-                gfx.drawLine(10, 29, w - 10, 29)
-                gfx.drawText(prompt[1], 10, 42)
-                gfx.setFont(Art.subFont)
-                gfx.drawText(prompt[2], 10, 66)
-                gfx.drawLine(10, fullH - 49, w - 10, fullH - 49)
-                gfx.setFont(Art.titleFont)
-                gfx.drawText(string.format("%d / 3 SPOTS FOUND", tumbler - 1), 10, fullH - 39)
-                gfx.setFont(Art.subFont)
-                gfx.drawText("No timer. Take your time.", 10, fullH - 21)
+                if Art.plaque then
+                    local tw = Art.drawTag(13, 6, nil, "TUTORIAL 1/2")
+                    Art.drawLeader(13 + tw + 4, w - 14, 6 + Art.TAG_H // 2)
+                    gfx.setFont(Art.titleFont)
+                    gfx.drawText(prompt[1], 12, 32)
+                    gfx.setFont(Art.subFont)
+                    gfx.drawText(prompt[2], 12, 50)
+                    Art.drawLeader(12, w - 14, fullH - 52)
+                    gfx.setFont(Art.titleFont)
+                    gfx.drawText(string.format("%d / 3 SPOTS FOUND", tumbler - 1), 12, fullH - 44)
+                    gfx.setFont(Art.subFont)
+                    gfx.drawText("No timer. Take your time.", 12, fullH - 27)
+                else
+                    gfx.setFont(Art.titleFont)
+                    gfx.drawText("TUTORIAL 1/2", 10, 10)
+                    gfx.drawLine(10, 29, w - 10, 29)
+                    gfx.drawText(prompt[1], 10, 42)
+                    gfx.setFont(Art.subFont)
+                    gfx.drawText(prompt[2], 10, 66)
+                    gfx.drawLine(10, fullH - 49, w - 10, fullH - 49)
+                    gfx.setFont(Art.titleFont)
+                    gfx.drawText(string.format("%d / 3 SPOTS FOUND", tumbler - 1), 10, fullH - 39)
+                    gfx.setFont(Art.subFont)
+                    gfx.drawText("No timer. Take your time.", 10, fullH - 21)
+                end
             end
         gfx.popContext()
         Tutorial.images[key] = img

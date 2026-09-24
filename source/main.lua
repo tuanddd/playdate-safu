@@ -1,5 +1,6 @@
 import "CoreLibs/graphics"
 import "CoreLibs/timer"
+import "CoreLibs/nineslice"
 import "sound"
 import "dial"
 import "modifiers"
@@ -814,8 +815,9 @@ local function drawIconLabel(icon, text, cx, y, white)
     local inkTop, inkH = Art.inkBand(Art.numFont, Art.CAPS)
     local iw, ih = icon:getSize()
     local x = math.floor(cx - (iw + ICON_GAP + tw) / 2)
-    if white then gfx.setImageDrawMode(gfx.kDrawModeFillWhite) end
+    if white then gfx.setImageDrawMode(gfx.kDrawModeInverted) end
     icon:draw(x, y)
+    if white then gfx.setImageDrawMode(gfx.kDrawModeFillWhite) end
     gfx.drawText(text, x + iw + ICON_GAP, y + math.floor((ih - inkH) / 2) - inkTop)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
@@ -854,9 +856,9 @@ local function drawHud()
     if Run.cfg and Run.cfg.oneShot then tx = math.sin(now() / 26) * 1.6 end
     if not Keypad.active and not GearMesh.visible() and not DustJam.visible()
         and not (Run.cfg.spotlight and target) then
-        drawIconLabel(KeypadUI.iconDown, "OPEN?", PLAY_CX + tx, 186, false)
+        drawIconLabel(KeypadUI.iconDown, "OPEN?", PLAY_CX + tx, 186, Art.playBg ~= nil)
     end
-    drawIconLabel(Art.iconB, "MENU", PLAY_CX, 204, false)
+    drawIconLabel(Art.iconB, "MENU", PLAY_CX, 204, Art.playBg ~= nil)
     drawPerf()
 end
 
@@ -1324,8 +1326,12 @@ local DOCKED_TEXT <const> = "UNDOCK THE CRANK"
 
 local function drawDockedNotice()
     local bx, by, bw, bh <const> = 74, 96, 252, 48
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillRoundRect(bx, by, bw, bh, 8)
+    if Art.chip then
+        Art.chip:drawInRect(bx, by, bw + Art.CHIP_SHADOW, bh + Art.CHIP_SHADOW)
+    else
+        gfx.setColor(gfx.kColorBlack)
+        gfx.fillRoundRect(bx, by, bw, bh, 8)
+    end
     gfx.setFont(Art.uiFont)
     -- centre on the text's ink, not its line box, or it sits high in the panel
     local inkTop, inkH = Art.inkBand(Art.uiFont, Art.CAPS)
@@ -1335,7 +1341,86 @@ local function drawDockedNotice()
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
+local Report = { X = 234, Y = 64, W = 156, H = 172, PAD = 12 }
+
+function Report.reportModRows(y)
+    local mods = Run.mods or {}
+    local inkTop, inkH = Art.inkBand(Art.titleFont, Art.CAPS)
+    gfx.setFont(Art.titleFont)
+    for i, m in ipairs(mods) do
+        local ry = y + (i - 1) * 15
+        local icon = Mods.iconImage(m.icon)
+        if icon then icon:draw(Report.X + Report.PAD, ry) end
+        gfx.drawText(m.name, Report.X + Report.PAD + 19, ry + math.floor((14 - inkH) / 2) - inkTop)
+    end
+    if #mods == 0 then
+        gfx.setFont(Art.subFont)
+        gfx.drawText("No modifiers.", Report.X + Report.PAD, y)
+    end
+end
+
+function Report.reportPrompts(aLabel)
+    local y = Report.Y + Report.H - 43
+    gfx.setColor(gfx.kColorBlack)
+    Art.drawLeader(Report.X + Report.PAD, Report.X + Report.W - Report.PAD, y)
+    local cx = Report.X + Report.W // 2
+    drawIconLabel(Art.iconA, aLabel, cx, y + 7, false)
+    drawIconLabel(Art.iconB, "TITLE", cx, y + 23, false)
+end
+
+function Report.drawHeadline(set, y)
+    local f = set.frames[1]
+    f.img:draw(200 - f.hw, y - f.hh)
+end
+
+function Report.buildWinReport()
+    local img = gfx.image.new(400, 240, gfx.kColorBlack)
+    gfx.pushContext(img)
+        Art.endArt.win:draw(0, 0)
+        Report.drawHeadline(sfxImages.open, 34)
+        Art.drawPanel(Report.X, Report.Y, Report.W, Report.H)
+        local x = Report.X + Report.PAD
+        local y = Report.Y + 10
+        local aLabel = "AGAIN"
+        if tutorialStep then
+            Art.drawTag(x, y, nil, "TUTORIAL")
+            gfx.setFont(Art.timerFont)
+            gfx.drawTextAligned(string.format("%d OF %d", tutorialStep, #TUTORIAL),
+                Report.X + Report.W // 2, y + 22, kTextAlignment.center)
+            aLabel = tutorialStep < #TUTORIAL and "NEXT" or "NEW GAME"
+        else
+            Art.drawTag(x, y, Art.iconClock14, "TIME LEFT")
+            gfx.setFont(Art.timerFont)
+            gfx.drawTextAligned(formatTime(remaining),
+                Report.X + Report.W // 2, y + 22, kTextAlignment.center)
+        end
+        Art.drawTag(x, y + 52, nil, "CRACKED WITH")
+        Report.reportModRows(y + 73)
+        Report.reportPrompts(aLabel)
+    gfx.popContext()
+    return img
+end
+
+function Report.buildLoseReport(key)
+    local img = gfx.image.new(400, 240, gfx.kColorBlack)
+    gfx.pushContext(img)
+        Art.endArt[key]:draw(0, 0)
+        Report.drawHeadline(sfxImages[key], 34)
+        Art.drawPanel(Report.X, Report.Y, Report.W, Report.H)
+        local x = Report.X + Report.PAD
+        local y = Report.Y + 10
+        Art.drawTag(x, y, nil, "TUMBLERS FOUND")
+        Art.drawDots(Report.X + Report.W // 2, y + 33, tumbler - 1, false,
+            Run.cfg and Run.cfg.tumblers or 3)
+        Art.drawTag(x, y + 52, nil, "PLAYED WITH")
+        Report.reportModRows(y + 73)
+        Report.reportPrompts("TRY AGAIN")
+    gfx.popContext()
+    return img
+end
+
 local function buildWinPanel()
+    if Art.endArt.win and Art.panel then return Report.buildWinReport() end
     local img = gfx.image.new(400, 240, gfx.kColorBlack)
     gfx.pushContext(img)
         local f = sfxImages.open.frames[1]
@@ -1425,10 +1510,11 @@ local function drawLoseMods(cy)
 end
 
 local function buildLosePanel()
+    local key = loseReason == "boom" and "boom"
+        or (loseReason == "caught" and "caught" or "timeup")
+    if Art.endArt[key] and Art.panel then return Report.buildLoseReport(key) end
     local img = gfx.image.new(400, 240, gfx.kColorBlack)
     gfx.pushContext(img)
-        local key = loseReason == "boom" and "boom"
-            or (loseReason == "caught" and "caught" or "timeup")
         local f = sfxImages[key].frames[1]
         f.img:draw(200 - f.hw, 58 - f.hh)
         -- Smaller than the win panel's heading: this line labels the dots, it is
@@ -1521,8 +1607,12 @@ end
 
 local function drawCta(icon, text, x, y)
     local w = ctaWidth(text)
-    gfx.setColor(gfx.kColorBlack)
-    gfx.fillRoundRect(x, y, w, CTA_H, 6)
+    if Art.chip then
+        Art.chip:drawInRect(x, y, w + Art.CHIP_SHADOW, CTA_H + Art.CHIP_SHADOW)
+    else
+        gfx.setColor(gfx.kColorBlack)
+        gfx.fillRoundRect(x, y, w, CTA_H, 6)
+    end
     drawIconLabel(icon, text, x + w // 2, y + (CTA_H - ICON) // 2, true)
     return w
 end
@@ -1532,12 +1622,19 @@ local function drawTitle()
     -- and both robbers, with the dial, wordmark and CTA cut out of it as white.
     Art.titleBg:draw(0, 0)
     Art.drawDial(CX, 126, 62, dialPos)
-    local tf = sfxImages.title.frames[1]
-    tf.img:draw(200 - tf.hw, 40 - tf.hh)
-    local wA, wB = ctaWidth("CRACK IT"), ctaWidth("TUTORIAL")
-    local cx = math.floor(200 - (wA + CTA_GAP + wB) / 2)
-    drawCta(Art.iconA, "CRACK IT", cx, 204)
-    drawCta(Art.iconB, "TUTORIAL", cx + wA + CTA_GAP, 204)
+    if not Art.titleNeko then
+        local tf = sfxImages.title.frames[1]
+        tf.img:draw(200 - tf.hw, 40 - tf.hh)
+    end
+    if not Art.ctaRow then
+        local wA, wB = ctaWidth("CRACK IT"), ctaWidth("TUTORIAL")
+        Art.ctaRow = gfx.image.new(wA + CTA_GAP + wB + 4, CTA_H + 4)
+        gfx.pushContext(Art.ctaRow)
+            drawCta(Art.iconA, "CRACK IT", 0, 0)
+            drawCta(Art.iconB, "TUTORIAL", wA + CTA_GAP, 0)
+        gfx.popContext()
+    end
+    Art.ctaRow:draw(math.floor(200 - (Art.ctaRow:getSize() - 4) / 2), 204)
     drawEffects()          -- the auto-turn's latches land here
 end
 
@@ -1771,7 +1868,7 @@ local function drawMenu()
         local boxW = PADX * 2 + COLS * CELL_W + COL_GAP
         local boxH = PADY * 2 + HEAD + ROWS * CELL_H + (ROWS - 1) * ROW_GAP + 30
         local bx, by = math.floor(200 - boxW / 2), math.floor(120 - boxH / 2)
-        Art.drawPlate(bx, by, boxW, boxH)
+        Art.drawPanel(bx, by, boxW, boxH)
 
         local _, mode = Mods.score(dbgSel)
         gfx.setFont(Art.numFont)
@@ -1848,13 +1945,13 @@ local function drawMenu()
         -- Sized to the content, not the screen: a cell only has to hold the
         -- longest title (FOUR TUMBLERS, 107px + the 20px icon column) and wrap
         -- the longest subtitle (188px) onto two lines.
-        local CELL_W <const>, CELL_H <const> = 134, 44
+        local CELL_W <const>, CELL_H <const> = 134, 46
         local COL_GAP <const>, ROW_GAP <const> = 10, 6
-        local PADX <const>, PADY <const> = 14, 10
+        local PADX <const>, PADY <const> = 16, 14
         local boxW = PADX * 2 + COLS * CELL_W + COL_GAP
         local boxH = PADY * 2 + ROWS * CELL_H + (ROWS - 1) * ROW_GAP + 14
         local bx, by = math.floor(200 - boxW / 2), math.floor(120 - boxH / 2)
-        Art.drawPlate(bx, by, boxW, boxH)
+        Art.drawPanel(bx, by, boxW, boxH)
 
         local pages = math.ceil(#Mods.list / PER)
         local first = (modsPage - 1) * PER + 1
@@ -1864,12 +1961,18 @@ local function drawMenu()
                 local cx = bx + PADX + (i % COLS) * (CELL_W + COL_GAP)
                 local cy = by + PADY + math.floor(i / COLS) * (CELL_H + ROW_GAP)
                 local icon = Mods.iconImage(m.icon)
-                if icon then icon:draw(cx, cy + 1) end
-                local tx = cx + 20
-                gfx.setFont(Art.titleFont)
-                gfx.drawText(m.name, tx, cy)
-                gfx.setFont(Art.subFont)
-                gfx.drawTextInRect(m.sub, tx, cy + 15, CELL_W - 20, 26)
+                if Art.plaque then
+                    Art.drawTag(cx, cy, icon, m.name)
+                    gfx.setFont(Art.subFont)
+                    gfx.drawTextInRect(m.sub, cx + 1, cy + Art.TAG_H + 2, CELL_W - 4, 26)
+                else
+                    if icon then icon:draw(cx, cy + 1) end
+                    local tx = cx + 20
+                    gfx.setFont(Art.titleFont)
+                    gfx.drawText(m.name, tx, cy)
+                    gfx.setFont(Art.subFont)
+                    gfx.drawTextInRect(m.sub, tx, cy + 15, CELL_W - 20, 26)
+                end
             end
         end
 
