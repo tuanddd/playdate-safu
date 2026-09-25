@@ -1,0 +1,8 @@
+name = "safu-scores"
+main = "src/worker.js"
+compatibility_date = "2026-09-20"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "SCORES"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

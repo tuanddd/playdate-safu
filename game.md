@@ -42,10 +42,11 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | HUD | The screen **is** the safe door: timer plate, dial well, 3 modifier plates |
 | Sweet spots | 3 to find; one real spot is generated at a time |
 | Directions | CW → CCW → CW |
-| Timer | **3 minutes** (counts down, `mm:ss.cc`) |
+| Timer | **3 minutes**, shared across an endless streak; each crack adds **+45 s**, capped at 3:00 |
 | Open the safe | Press D-pad Down after all 3 are found |
 | Refresh rate | 50 fps |
-| Screens | Title → Play → Win / Lose → (Ⓑ) → Title |
+| Mode | **Endless**: a cracked safe leads straight into the next one, with new modifiers, until you lose |
+| Screens | Title → Play → (crack → next safe)… → Lose → (Ⓑ) → Title; Title ↑ → Most Wanted |
 | Tutorial | **Ⓑ on the title** — 2 scripted untimed runs: bare dial, then BLACKOUT alone |
 | Modifiers | 3 rolled per run — **effects and custom UI both live** |
 
@@ -68,11 +69,14 @@ The crank should feel indispensable, not like a substitute joystick. The core fa
 | `TICK_STEP` | `4` | A tick every 4 dial units → 25 ticks per revolution |
 | `DIRS` | `{1, -1, 1}` | Required direction per tumbler |
 | `EXIT_MS` | `420` | Length of the slide-up back to the title screen |
+| `Streak.BONUS_MS` | `45000` | Time added to the shared clock per cracked safe, capped at `GAME_MS` |
+| `Streak.NEXT_MS` | `520` | The old safe sliding off to the left while the new one appears |
+| `Streak.CARD_MS` / `CARD_STAGGER` | `380` / `90` | Each modifier plaque's slide-in, and the delay between plaques |
 | `TITLE_AUTO_UPS` | `11` | Title screen: dial units per second while the dial turns itself, clockwise |
 | `TITLE_IDLE_MS` | `4000` | Title screen: silence from the crank before auto turning resumes |
 | `TITLE_LATCH_MIN/MAX` | `2600` / `5200` | Title screen: gap between the auto-turn's idle latches |
-| `DROP_IN/HOLD/OUT_MS` | `300` / `100` / `300` | Sound-cue entrance, hold and exit — 700 ms in total |
-| `DROP_MAX` | `2` | Most sound cues on screen at once; they may never overlap |
+| `Drop.IN_MS` / `HOLD_MS` / `OUT_MS` | `300` / `100` / `300` | Sound-cue entrance, hold and exit — 700 ms in total |
+| `Drop.MAX` | `2` | Most sound cues on screen at once; they may never overlap |
 
 ---
 
@@ -156,8 +160,23 @@ no smaller weight to fall back to, so names must stay at or under 13 characters.
 `Run.mods` is rolled in `startGame()` via `Mods.roll(3)`, and `Mods.buildCfg` turns the set into
 `Run.cfg` — the tunables the run plays by. Effects and their visuals are both implemented (§12b).
 
-**There is no progress indicator during normal play or the BLACKOUT tutorial.** The player tracks their own progress from the
-audio/visual cues. `↓ Open?` is therefore a genuine gamble.
+**The tumbler tracker** (`Streak.drawTracker`) is a small lamp plate at (9,64), in the free strip
+left of the dial bezel:
+- the safe's number in the streak (`#3`) at the top (left out in the tutorial);
+- one lamp per tumbler (3, or 4 with FOUR TUMBLERS). A lamp is black with a glint once its
+  spot is found, and a dithered empty well until then.
+
+The plate is cached and rebuilt only when the key (found, total, safe number) changes, so it is
+one small blit per frame. It is **hidden under BLACKOUT and ONE SHOT**, the two modifiers built
+on the player counting for themselves, where `↓ Open?` stays a genuine gamble.
+
+**The plaques slide in.** At the start of every timed run, and of every new safe in a streak,
+the three modifier plaques slide in from the right edge. Each takes 380 ms on a cubic
+ease-out with no overshoot, and they start 90 ms apart. `Streak.bakeCards()` bakes the bare door,
+the three card images and the full background together at run start. While the plaques move,
+the bare door is blitted with the cards over it. After that the pre-composed full background
+takes over, so there is never a mid-run re-bake and the frame cost after the slide is unchanged.
+Tutorial runs, which are untimed, skip the slide.
 
 ### Tutorial
 
@@ -232,7 +251,24 @@ Losing a tutorial step is not reachable (untimed, and BLACKOUT has no lose condi
 lose screen restarts **the same step** rather than rolling a random run, so the path is not a trap
 if a future step adds a modifier that can end a run.
 
-### Win
+### Endless: cracking a safe
+
+A normal run is a **streak**. `Streak.start()` (Ⓐ on the title, Ⓐ TRY AGAIN, Ⓐ after the
+tutorial) resets `Streak.count` and rolls the first safe. Each crack goes like this:
+1. `openSafe()` adds one to `Streak.count` and calls `Profile.crack(count)`, which raises the
+   lifetime total and the best streak and saves both.
+2. There is the usual `K-CHUNK!`, shake and handle sound for 800 ms.
+3. `Streak.next()` captures the screen, sets the clock to `min(3:00, remaining + 45 s)`, and
+   rolls a new safe with new modifiers through `startGame(nil, nil, carryMs)`.
+4. `STATE_NEXT` runs for 520 ms. The new safe is drawn and the captured old one slides off to
+   the left. A black chip reads `SAFE n CRACKED  +m:ss`, with the time left out when the clock
+   was already full.
+5. Play resumes and the new plaques slide in. The clock does not run during the transition.
+
+A streak ends only on a loss: time's up, caught, boom or ONE SHOT. There is no win screen
+outside the tutorial.
+
+### Win (tutorial only)
 1. Screen shake + `K-CHUNK!` + sweet sound; BGM stops.
 2. After 800 ms the live scene is captured, and a black panel **slides down over it** (460 ms,
    cubic ease-out) — the panel *is* the door opening.
@@ -244,6 +280,24 @@ if a future step adds a modifier that can end a run.
    and the run's modifiers, one icon and name per row, then `Ⓐ AGAIN` / `Ⓑ TITLE`.
 
 ### Lose
+
+**In a streak the report card is the endless card:**
+- a `SAFES CRACKED` tag with the streak count in Roobert-20;
+- `BEST n    TOTAL n` from the save;
+- a `LAST SAFE` tag with the icons of the modifiers that ended the run;
+- `Ⓐ TRY AGAIN`, `Ⓑ TITLE` and `↑ SUBMIT SCORE`.
+
+The submit row is redrawn live over the baked panel (`Report.drawSubmit`). After a submit it
+shows the network status instead: `SENDING SCORE...`, `SCORE SENT!`, `COULD NOT CONNECT`, and so
+on.
+
+**↑ opens the Playdate on-screen keyboard** (`CoreLibs/keyboard`), pre-filled with the saved
+name. A `YOUR NAME` panel on the left echoes the text. On OK the name is uppercased, stripped to
+`A–Z 0–9 space . _ -`, cut to 10 characters, saved, and submitted. The end screen ignores Ⓐ, Ⓑ
+and ↑ while the keyboard is visible, because button polling still sees the presses the keyboard
+consumes.
+
+The tutorial keeps the old card: tumbler dots and the modifiers played.
 Same shape as the win, so both endings read as the door moving:
 
 1. Timer hits `00:00.00` → `TIME'S UP` SFX over the live scene, BGM stops.
@@ -602,6 +656,79 @@ binding is gone.
 
 ---
 
+## 8a. First launch and the save file
+
+`source/profile.lua` keeps `Profile.data` in `playdate.datastore` file `profile`, so it persists
+between launches. The fields are:
+- `tutorialDone`;
+- `lifetime` (safes ever cracked outside the tutorial);
+- `best` (the best streak);
+- `name` (last name submitted);
+- `id` (16 random hex characters made on first launch, which is how the server tells devices
+  apart).
+
+**Until `tutorialDone` is set, Ⓐ CRACK IT on the title starts tutorial lesson 1 instead of a
+run.** Clearing lesson 1 sets it, and from then on Ⓐ behaves normally. Ⓑ TUTORIAL is always
+available. Debug → `Reset save` clears everything but the id, to replay the first launch.
+
+## 8c. Most Wanted (leaderboard)
+
+**How to open it:** ↑ on the title (a `↑ MOST WANTED` chip sits top-left), or Pause →
+`Most Wanted`. The layout follows the SNES Mario Kart standings screen, themed as a heist
+ranking: the best crackers are the most wanted.
+- Each page has its own plate, both made by `images/gen/gen_standings.py`, with a pixel `MOST
+  WANTED` wordmark, a white banner and a dark board:
+  - `source/images/standings-streak.png` for **BEST STREAK**, with fired-up Neko heads.
+  - `source/images/standings-total.png` for **BEST TOTAL** (lifetime safes cracked), with
+    rich, $-eyed Neko heads.
+- Plates are loaded lazily per page. The banner reads the page title between two black
+  triangles, and ◀/▶ switches pages.
+- Eight rows show rank, name, a dotted leader and a two-digit score in white.
+- Your own row is inverted. If you're outside the top list it goes on the last row with your
+  server rank, or `-` when offline.
+- Ⓐ refreshes and Ⓑ goes back.
+
+**Networking.** `source/leaderboard.lua` (`Board.*`) uses `playdate.network.http`, which needs
+Playdate OS 2.7 or later.
+- Requests are queued (`Board.want`) and started only from `Board.update()` in the main update
+  loop, because the SDK's first-use permission dialog cannot open from an input handler.
+- A request to `GET /scores` or `POST /scores` carries `X-Safu-Client: 1` and
+  `X-Safu-Player: <id>`, and times out after 15 s.
+- A good response is saved to the `board` datastore file and shown the next time, including
+  offline.
+- `Board.HOST` is `nil` until the Worker is deployed. While it is nil, everything stays offline
+  and only local scores show.
+
+**When the network isn't there.** Gameplay never waits on the network. Scores are saved on the
+device before any request, and the last good board stays on screen. The status line says why
+nothing arrived:
+
+| Case | Status |
+|---|---|
+| `Board.HOST` not set | `ONLINE BOARD IS OFF` |
+| Player denied network access (`http.new` returns nil or raises, caught by `pcall`) | `NETWORK NOT ALLOWED` |
+| Board download failed, the connection closed, or 15 s passed | `OFFLINE - LAST SAVED BOARD` |
+| Score upload failed | `NOT SENT - WILL RETRY LATER` |
+| Server said 429 | `TOO FAST - TRY AGAIN SOON` |
+| Server said 400 | `SCORE REJECTED` (pending is cleared so it can't loop) |
+
+**Nothing is lost when an upload fails.** Every submit sets `Profile.data.pending` and saves it,
+and only a 200 reply clears it. Opening Most Wanted with `pending` set sends a POST instead of a
+GET. The POST returns the board too, so a missed submit reaches the server silently the next
+time the board opens, including after an app restart. The server keeps the higher of each
+value, so a late resend always carries the latest best and lifetime.
+
+Verified in the simulator against `wrangler dev --local`:
+1. No host gives `ONLINE BOARD IS OFF`.
+2. With the server down, the submit fails in about 3.6 s with pending saved.
+3. After a restart with the server up, opening the board resent the score and cleared pending.
+
+**Server.** `server/` holds a Cloudflare Worker with KV storage and no dependencies. Read
+`server/README.md` for deploying it and `server/test.sh` for the curl checks against
+`wrangler dev --local`. It keeps the higher of the stored and submitted best and lifetime per
+player, returns the top 10 of each list, flags the caller's rows with `me`, and never returns
+ids. There is no anti-cheat beyond validation.
+
 ## 8b. Pause menu (Ⓑ)
 
 Ⓑ freezes the run and opens a menu. The screen is captured on open and blitted underneath, and
@@ -737,15 +864,15 @@ The entrance, 700 ms end to end, all of it ease-out (`easeOut()`, cubic):
 
 | Phase | Length | Y | Opacity | Scale |
 |---|---|---|---|---|
-| In | `DROP_IN_MS` 300 ms | fully above the top edge → `DROP_REST_Y` 34 | 20% → 100% | 80% → 100% |
-| Hold | `DROP_HOLD_MS` 100 ms | 34 | 100% | 100% |
-| Out | `DROP_OUT_MS` 300 ms | 34 → 24 | 100% → 0% | 100% |
+| In | `Drop.IN_MS` 300 ms | fully above the top edge → `Drop.REST_Y` 34 | 20% → 100% | 80% → 100% |
+| Hold | `Drop.HOLD_MS` 100 ms | 34 | 100% | 100% |
+| Out | `Drop.OUT_MS` 300 ms | 34 → 24 | 100% → 0% | 100% |
 
-Rules: at most `DROP_MAX` = 2 alive at once, and a new one is only placed where it clears every
-live cue by `DROP_GAP` - stacked cues read as one smear. `addDrop()` makes 14 attempts inside the
+Rules: at most `Drop.MAX` = 2 alive at once, and a new one is only placed where it clears every
+live cue by `Drop.GAP` - stacked cues read as one smear. `addDrop()` makes 14 attempts inside the
 strip and gives up rather than overlap.
 
-**The strip is chosen so a collision is impossible rather than repaired.** `DROP_L`-`DROP_R`
+**The strip is chosen so a collision is impossible rather than repaired.** `Drop.L`-`Drop.R`
 (118-221) is the gap between the clock badge with its dropped shadow (which ends at x=113) and the
 card column (whose border starts at x=225); `addDrop()` insets it further by the cue's own
 half-width, so no part of a cue can ever reach either. Nothing load-bearing sits under one, so
@@ -865,7 +992,7 @@ the dial uses the 10px cut.
 |---|---|---|
 | 5:00 timer | **3:00** | 5 min was slack even for a ~20 s loop; 1:00 left no room once three modifiers were stacked on it |
 | Crank-only, no buttons | **D-pad Down pulls the handle** | Adds a real decision + a way to fail by nerve, not just by clock |
-| `○ ○ ○` progress shown during play | **Hidden** (shown only on the lose screen) | Forces the player to track their own count; makes Down a gamble |
+| `○ ○ ○` progress shown during play | **Tumbler tracker in the HUD**, hidden under BLACKOUT and ONE SHOT | It was hidden at first to make Down a gamble; now shown for readability, with the gamble kept where a modifier is about it |
 | Tolerance ±1 (36–38) | **±2.2** | Tuned to how precise the crank actually feels |
 | No speed rules | **Graze + reset gates** | The "turn too fast" rule — gives fast cranking a real cost |
 | Tick per dial unit | **Every 4 units** | 100/rev was mush; 25/rev reads as distinct detents |
@@ -1553,7 +1680,10 @@ actual HUD space; enlarged previews use integer pixel scaling.
 ## 13. Code map
 
     source/
-      main.lua      state machine, crank read, tumbler logic, HUD, screens, transitions
+      profile.lua   Profile.* — the persistent save (first launch, lifetime, best, name, id)
+      leaderboard.lua Board.* — HTTPS client, cached board, the standings screen
+      main.lua      state machine, crank read, tumbler logic, HUD, screens, transitions,
+                    Streak.* (endless flow, tracker, plaque slide-in), Report.* (end cards)
                     Run.mods / Run.has(id) — the rolled modifiers, for the effects work
       dial.lua      Art.*  — dial, vault door, dial well, timer plate, modifier cards,
                     manga SFX baking, progress dots, fonts, icons

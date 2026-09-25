@@ -67,6 +67,16 @@ env.sfxImages = { reset = {}, kchik = {}, kchunk = {}, locked = {}, toofast = {}
 env.placeAround = function() return 100, 100 end
 env.addEffect = function() end
 env.wh, env.wv = {}, {}
+env.Streak = { count = 0 }
+env.Board = { update = function() end }
+env.Profile = {
+    data = { lifetime = 0, best = 0, tutorialDone = false },
+    crack = function(streak)
+        env.Profile.data.lifetime = env.Profile.data.lifetime + 1
+        if streak > env.Profile.data.best then env.Profile.data.best = streak end
+    end,
+    finishTutorial = function() env.Profile.data.tutorialDone = true end,
+}
 env.frameMs = 20
 
 for _, name in ipairs({ "TOL", "RESET_SPEED", "DEAD_SPEED", "TICK_STEP", "GAME_MS", "WATER_N", "STATE_PLAY", "STATE_WIN", "STATE_LOSE" }) do
@@ -161,6 +171,35 @@ test("3/4 real latches, guaranteed fixed decoy, no overlapping next target", fun
             end
         end
     end
+end)
+
+test("endless: each opened safe extends the streak and the saved totals", function()
+    env.Streak.count = 0
+    env.Profile.data.lifetime, env.Profile.data.best = 0, 0
+    env.tutorialStep = nil
+    for n = 1, 3 do
+        start(3, false)
+        clear(3)
+        env.tryHandle()
+        check(env.state == env.STATE_WIN, "completed combination did not open")
+        check(env.Streak.count == n, "crack did not extend the streak")
+    end
+    check(env.Profile.data.lifetime == 3 and env.Profile.data.best == 3, "crack not recorded")
+    start(3, false)
+    env.tryHandle()
+    check(env.Streak.count == 3, "a locked handle changed the streak")
+end)
+
+test("tutorial cracks do not count, and lesson 1 marks the tutorial done", function()
+    env.Streak.count, env.Profile.data.lifetime = 0, 0
+    env.Profile.data.tutorialDone = false
+    start(3, false)
+    env.tutorialStep = 1
+    clear(3)
+    env.tryHandle()
+    check(env.Streak.count == 0 and env.Profile.data.lifetime == 0, "tutorial crack counted")
+    check(env.Profile.data.tutorialDone, "lesson 1 did not mark the tutorial done")
+    env.tutorialStep = nil
 end)
 
 test("decoy repeats only after leaving, never changes progress or direction", function()

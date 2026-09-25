@@ -1,6 +1,7 @@
 import "CoreLibs/graphics"
 import "CoreLibs/timer"
 import "CoreLibs/nineslice"
+import "CoreLibs/keyboard"
 import "sound"
 import "dial"
 import "modifiers"
@@ -14,6 +15,8 @@ import "dust-jam"
 import "dust-jam-ui"
 import "spotlight"
 import "spotlight-ui"
+import "profile"
+import "leaderboard"
 
 local gfx <const> = playdate.graphics
 local pd <const> = playdate
@@ -58,6 +61,19 @@ local STATE_WIN <const> = 3
 local STATE_LOSE <const> = 4
 local STATE_TOTITLE <const> = 5
 local STATE_MENU <const> = 6
+local STATE_NEXT <const> = 7
+local STATE_BOARD <const> = 8
+
+local Streak = {
+    BONUS_MS = 45000,
+    NEXT_MS = 520,
+    CARD_MS = 380,
+    CARD_STAGGER = 90,
+    count = 0,
+    added = 0,
+    clock = 0,
+    image = nil,
+}
 
 local sfxImages = {
     kchik = Art.makeSfx("K-CHIK!", 1.3),
@@ -150,7 +166,7 @@ local menuIndex = 1
 local menuPage = "main"
 local menuClock = 0
 local modsPage = 1
-local MENU_ITEMS <const> = { "Resume", "Modifiers", "Debug", "Quit" }
+local MENU_ITEMS <const> = { "Resume", "Modifiers", "Most Wanted", "Debug", "Quit" }
 -- Debug picker: force an exact set instead of rolling for one. Illegal
 -- combinations are deliberately allowed - being able to force BLACKOUT + TOO
 -- LOUD and watch what happens is the entire point of a debug tool - so the
@@ -164,7 +180,7 @@ local dbgPage = 1
 local dbgSel = {}
 -- Debug is a branch now: Screens jumps straight to an end screen to inspect it,
 -- Modifiers is the forced-set picker, Audio is the live mixer over Sfx.mix.
-local DEBUG_ITEMS <const> = { "Screens", "Modifiers", "Audio" }
+local DEBUG_ITEMS <const> = { "Screens", "Modifiers", "Audio", "Reset save" }
 local SCREEN_ITEMS <const> = { "Safe open", "Time's up", "Caught", "Boom" }
 local SCREEN_KIND <const> = { "win", "timeup", "caught", "boom" }
 local dbgMenuIndex = 1
@@ -245,7 +261,7 @@ local blackoutClock = nil  -- nil once the opening is over, or if it never ran
 local flashClicked = false
 -- Every "something out there made a noise" cue queues here: TOO LOUD's notes and
 -- GUARD's marks are the same event to the player, so they animate identically.
--- See DROP_* below for the animation itself.
+-- See Drop.* below for the animation itself.
 local drops = {}
 local noteAt = 0
 local noteBurst = nil
@@ -321,7 +337,7 @@ local function placeAround(set, spread)
     return x, y
 end
 
-local function startGame(forced, untimed)
+local function startGame(forced, untimed, carryMs)
     local startT0 = pd.getCurrentTimeMilliseconds()
     math.randomseed(now())
     rawPos = math.random(0, 99)
@@ -386,10 +402,13 @@ local function startGame(forced, untimed)
     loseReason = "timeup"
     if Run.cfg.nitro or Run.cfg.spotlight then pd.startAccelerometer() else pd.stopAccelerometer() end
     bgImage = nil
+    Run.cardsAt = (not untimed) and now() or nil
+    Run.cardImgs = nil
+    Run.tracker = nil
     tumbler = 1
     spawnTarget()
     lastDetent = math.floor(dialPos / TICK_STEP)
-    remaining = GAME_MS
+    remaining = carryMs or GAME_MS
     shakeStart = -9999
     effects = {}
     winPhase = 0
@@ -498,6 +517,7 @@ local function loseRun(reason)
     GearMesh.cancel()
     DustJam.cancel()
     loseReason = reason
+    Streak.submitted = false
     state = STATE_LOSE
     losePhase = 1
     loseClock = 0
@@ -522,6 +542,45 @@ local function openSafe()
     state = STATE_WIN
     winPhase = 1
     winClock = 0
+    if tutorialStep == 1 then Profile.finishTutorial() end
+    if not tutorialStep then
+        Streak.count = Streak.count + 1
+        Profile.crack(Streak.count)
+    end
+end
+
+function Streak.askName()
+    local kb = playdate.keyboard
+    kb.keyboardWillHideCallback = function(ok)
+        if not ok then return end
+        local name = string.upper(kb.text or ""):gsub("[^A-Z0-9 ._-]", "")
+        name = name:match("^%s*(.-)%s*$"):sub(1, 10)
+        if name == "" then return end
+        Profile.setName(name)
+        Streak.submitted = true
+        if Profile.data.lifetime == 0 then
+            Board.status = "empty"
+        else
+            Board.submit()
+        end
+    end
+    kb.show(Profile.data.name)
+end
+
+function Streak.start()
+    Streak.count = 0
+    startGame()
+end
+
+function Streak.next()
+    Streak.image = gfx.getDisplayImage()
+    local carry = math.min(GAME_MS, remaining + Streak.BONUS_MS)
+    Streak.added = carry - remaining
+    startGame(nil, nil, carry)
+    Run.cardsAt = now() + Streak.NEXT_MS
+    Streak.banner = nil
+    Streak.clock = 0
+    state = STATE_NEXT
 end
 
 local function tryHandle()
@@ -822,7 +881,7 @@ local function drawIconLabel(icon, text, cx, y, white)
     gfx.setImageDrawMode(gfx.kDrawModeCopy)
 end
 
-local function buildBackground()
+local function buildBackground(withCards)
     local img = gfx.image.new(400, 240)
     gfx.pushContext(img)
         Art.drawDoor()
@@ -830,7 +889,7 @@ local function buildBackground()
         timerTX, timerTY = Art.drawTimerPlate(24, 20)
         if tutorialStep == 2 then
             Tutorial.draw(tutorialStep, tumbler, CARD_X, CARD_Y, CARD_W, CARD_H, CARD_GAP)
-        elseif not tutorialStep then
+        elseif not tutorialStep and withCards then
             for i, m in ipairs(Run.mods or {}) do
                 Art.drawModCard(CARD_X, CARD_Y + (i - 1) * CARD_GAP, CARD_W, CARD_H,
                     Mods.iconImage(m.icon), m.name, m.sub)
@@ -838,6 +897,90 @@ local function buildBackground()
         end
     gfx.popContext()
     return img
+end
+
+function Streak.bakeCards()
+    Run.bgBare = buildBackground(false)
+    Run.cardImgs = {}
+    bgImage = Run.bgBare:copy()
+    for i, m in ipairs(Run.mods or {}) do
+        local card = gfx.image.new(CARD_W + 4, CARD_H + 4)
+        gfx.pushContext(card)
+            Art.drawModCard(0, 0, CARD_W, CARD_H, Mods.iconImage(m.icon), m.name, m.sub)
+        gfx.popContext()
+        Run.cardImgs[i] = card
+        gfx.pushContext(bgImage)
+            card:draw(CARD_X, CARD_Y + (i - 1) * CARD_GAP)
+        gfx.popContext()
+    end
+end
+
+function Streak.drawCards(t)
+    for i, card in ipairs(Run.cardImgs) do
+        local q = (t - (i - 1) * Streak.CARD_STAGGER) / Streak.CARD_MS
+        if q > 0 then
+            if q > 1 then q = 1 end
+            local u = 1 - q
+            local e = 1 - u * u * u
+            card:draw(CARD_X + math.floor((1 - e) * 190), CARD_Y + (i - 1) * CARD_GAP)
+        end
+    end
+end
+
+function Streak.trackerVisible()
+    return Run.cfg and not Run.has("blackout") and not Run.cfg.oneShot
+end
+
+function Streak.drawTracker()
+    local total = Run.cfg.tumblers
+    local found = math.min(tumbler - 1, total)
+    local safeNo = tutorialStep and 0 or Streak.count + 1
+    local key = found * 1000 + total * 100 + safeNo
+    local tr = Run.tracker
+    if not tr or tr.key ~= key then
+        local head = safeNo > 0 and 18 or 4
+        local h = head + total * 18 + 4
+        local img = gfx.image.new(36, h + 3)
+        gfx.pushContext(img)
+            gfx.setColor(gfx.kColorBlack)
+            gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
+            gfx.fillRoundRect(3, 3, 32, h, 5)
+            gfx.setColor(gfx.kColorWhite)
+            gfx.fillRoundRect(0, 0, 32, h, 5)
+            gfx.setColor(gfx.kColorBlack)
+            gfx.setLineWidth(2)
+            gfx.drawRoundRect(1, 1, 30, h - 2, 5)
+            gfx.setLineWidth(1)
+            if safeNo > 0 then
+                gfx.setFont(Art.numFont)
+                local inkTop, inkH = Art.inkBand(Art.numFont, Art.DIGITS)
+                gfx.drawTextAligned("#" .. safeNo, 16, 5 + (12 - inkH) // 2 - inkTop,
+                    kTextAlignment.center)
+                gfx.fillRect(6, 17, 20, 1)
+            end
+            for k = 1, total do
+                local cy = head + 9 + (k - 1) * 18
+                gfx.setColor(gfx.kColorBlack)
+                gfx.fillCircleAtPoint(16, cy, 7)
+                gfx.setColor(gfx.kColorWhite)
+                gfx.fillCircleAtPoint(16, cy, 5)
+                if k <= found then
+                    gfx.setColor(gfx.kColorBlack)
+                    gfx.fillCircleAtPoint(16, cy, 4)
+                    gfx.setColor(gfx.kColorWhite)
+                    gfx.fillRect(14, cy - 3, 2, 2)
+                else
+                    gfx.setColor(gfx.kColorBlack)
+                    gfx.setDitherPattern(0.75, gfx.image.kDitherTypeBayer4x4)
+                    gfx.fillCircleAtPoint(16, cy, 4)
+                end
+            end
+            gfx.setColor(gfx.kColorBlack)
+        gfx.popContext()
+        tr = { key = key, img = img }
+        Run.tracker = tr
+    end
+    tr.img:draw(9, 64)
 end
 
 -- Dashes rather than a frozen 03:00.00 on an untimed run: a clock that is not
@@ -854,6 +997,7 @@ local function drawHud()
     -- losing this under BLACKOUT costs the player nothing.
     local tx = 0
     if Run.cfg and Run.cfg.oneShot then tx = math.sin(now() / 26) * 1.6 end
+    if Streak.trackerVisible() then Streak.drawTracker() end
     if not Keypad.active and not GearMesh.visible() and not DustJam.visible()
         and not (Run.cfg.spotlight and target) then
         drawIconLabel(KeypadUI.iconDown, "OPEN?", PLAY_CX + tx, 186, Art.playBg ~= nil)
@@ -950,33 +1094,34 @@ end
 --
 -- The whole thing is 700 ms: these are peripheral cues, and anything slower
 -- reads as a thing to look at rather than a thing to notice.
-local DROP_IN_MS <const> = 300
-local DROP_HOLD_MS <const> = 100
-local DROP_OUT_MS <const> = 300
-local DROP_MS <const> = DROP_IN_MS + DROP_HOLD_MS + DROP_OUT_MS
-local DROP_REST_Y <const> = 34
-local DROP_ALPHA0 <const> = 0.2   -- the 80% scale floor lives in dial.lua's DROP_MIN
+local Drop = {}
+Drop.IN_MS = 300
+Drop.HOLD_MS = 100
+Drop.OUT_MS = 300
+Drop.MS = Drop.IN_MS + Drop.HOLD_MS + Drop.OUT_MS
+Drop.REST_Y = 34
+Drop.ALPHA0 = 0.2   -- the 80% scale floor lives in dial.lua's DROP_MIN
 -- The strip of the top edge a cue is allowed to occupy: clear of the clock badge
 -- and its dropped shadow on the left (they end at x=113), clear of the card
 -- column on the right (its border starts at x=225). Nothing a cue can cross is
 -- load-bearing, so nothing has to be drawn back over the top of one.
-local DROP_L <const> = 118
-local DROP_R <const> = 221
+Drop.L = 118
+Drop.R = 221
 -- Two at once is the ceiling and they may never touch: stacked cues read as one
 -- smear. The strip is 103px wide against an 84px cue, so the second slot is
 -- usually refused - which is the point, not a bug.
-local DROP_MAX <const> = 2
-local DROP_GAP <const> = 10
+Drop.MAX = 2
+Drop.GAP = 10
 
 local function addDrop(set)
-    if #drops >= DROP_MAX then return end
-    local lo, hi = math.floor(DROP_L + set.hw), math.floor(DROP_R - set.hw)
-    if lo > hi then lo = (DROP_L + DROP_R) // 2; hi = lo end
+    if #drops >= Drop.MAX then return end
+    local lo, hi = math.floor(Drop.L + set.hw), math.floor(Drop.R - set.hw)
+    if lo > hi then lo = (Drop.L + Drop.R) // 2; hi = lo end
     for _ = 1, 14 do
         local x = math.random(lo, hi)
         local clear = true
         for _, d in ipairs(drops) do
-            if math.abs(d.x - x) < d.set.hw + set.hw + DROP_GAP then
+            if math.abs(d.x - x) < d.set.hw + set.hw + Drop.GAP then
                 clear = false
                 break
             end
@@ -1001,22 +1146,22 @@ local function drawDrops()
     while i <= #drops do
         local d = drops[i]
         local age = t - d.born
-        if age > DROP_MS then
+        if age > Drop.MS then
             table.remove(drops, i)
         else
             local set = d.set
             local n = #set.steps
             local y, alpha, idx
-            if age < DROP_IN_MS then
-                local e = easeOut(age / DROP_IN_MS)
-                y = -set.hh - 6 + (DROP_REST_Y + set.hh + 6) * e
-                alpha = DROP_ALPHA0 + (1 - DROP_ALPHA0) * e
+            if age < Drop.IN_MS then
+                local e = easeOut(age / Drop.IN_MS)
+                y = -set.hh - 6 + (Drop.REST_Y + set.hh + 6) * e
+                alpha = Drop.ALPHA0 + (1 - Drop.ALPHA0) * e
                 idx = math.floor(e * (n - 1)) + 1
-            elseif age < DROP_IN_MS + DROP_HOLD_MS then
-                y, alpha, idx = DROP_REST_Y, 1, n
+            elseif age < Drop.IN_MS + Drop.HOLD_MS then
+                y, alpha, idx = Drop.REST_Y, 1, n
             else
-                local e = easeOut((age - DROP_IN_MS - DROP_HOLD_MS) / DROP_OUT_MS)
-                y, alpha, idx = DROP_REST_Y - 10 * e, 1 - e, n
+                local e = easeOut((age - Drop.IN_MS - Drop.HOLD_MS) / Drop.OUT_MS)
+                y, alpha, idx = Drop.REST_Y - 10 * e, 1 - e, n
             end
             local step = set.steps[math.max(1, math.min(n, idx))]
             step.img:drawFaded(d.x - step.hw, y - step.hh, alpha,
@@ -1035,12 +1180,21 @@ end
 -- The room with the lights on: every run that is not BLACKOUT, and the first
 -- 400 ms of one that is.
 local function drawLitScene()
+    local slide = Run.cardsAt and now() - Run.cardsAt
+    if slide and slide >= Streak.CARD_MS + Streak.CARD_STAGGER * 2 then
+        Run.cardsAt, Run.bgBare, Run.cardImgs, slide = nil, nil, nil, nil
+    end
     if not bgImage then
         local t0 = now()
-        bgImage = buildBackground()
+        if slide then Streak.bakeCards() else bgImage = buildBackground(true) end
         bakeMs = now() - t0
     end
-    bgImage:draw(0, 0)
+    if slide and Run.bgBare then
+        Run.bgBare:draw(0, 0)
+        Streak.drawCards(slide)
+    else
+        bgImage:draw(0, 0)
+    end
     local ox, oy = 0, 0
     local sage = now() - shakeStart
     if sage < 220 then
@@ -1315,6 +1469,42 @@ local function updatePlay(dt)
 end
 
 -- Set `tutorialStep` after the call: startGame clears it.
+function Streak.makeBanner()
+    local text = string.format("SAFE %d CRACKED", Streak.count)
+    local add = Streak.added > 0 and string.format("+%d:%02d", Streak.added // 60000,
+        (Streak.added // 1000) % 60) or ""
+    local font = Art.numFont
+    local w1, w2 = font:getTextWidth(text), font:getTextWidth(add)
+    local w = 14 + w1 + (w2 > 0 and 12 + w2 or 0) + 14
+    local h = 28
+    local img = gfx.image.new(w + 2, h + 2)
+    gfx.pushContext(img)
+        if Art.chip then
+            Art.chip:drawInRect(0, 0, w + 2, h + 2)
+        else
+            gfx.fillRoundRect(0, 0, w, h, 6)
+        end
+        local inkTop, inkH = Art.inkBand(font, Art.CAPS)
+        local ty = (h - inkH) // 2 - inkTop
+        gfx.setFont(font)
+        gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+        gfx.drawText(text, 14, ty)
+        if w2 > 0 then gfx.drawText(add, 14 + w1 + 12, ty) end
+        gfx.setImageDrawMode(gfx.kDrawModeCopy)
+    gfx.popContext()
+    return img
+end
+
+function Streak.drawNext()
+    drawScene()
+    local t = math.min(Streak.clock / Streak.NEXT_MS, 1)
+    local e = 1 - (1 - t) * (1 - t) * (1 - t)
+    if Streak.image then Streak.image:draw(math.floor(-400 * e), 0) end
+    if not Streak.banner then Streak.banner = Streak.makeBanner() end
+    local bw = Streak.banner:getSize()
+    Streak.banner:draw(200 - bw // 2, 106)
+end
+
 local function startTutorial(step)
     local forced = {}
     for i, id in ipairs(TUTORIAL[step].mods) do forced[i] = Mods.byId[id] end
@@ -1368,6 +1558,38 @@ function Report.reportPrompts(aLabel)
     drawIconLabel(Art.iconB, "TITLE", cx, y + 23, false)
 end
 
+function Report.submitY()
+    return Report.Y + Report.H - 58 + 36
+end
+
+function Report.drawSubmit()
+    local y = Report.submitY()
+    gfx.setColor(gfx.kColorWhite)
+    gfx.fillRect(Report.X + 6, y - 1, Report.W - 12, 17)
+    gfx.setColor(gfx.kColorBlack)
+    local cx = Report.X + Report.W // 2
+    if Streak.submitted and Board.statusText() ~= "" then
+        gfx.setFont(Art.titleFont)
+        local inkTop, inkH = Art.inkBand(Art.titleFont, Art.CAPS)
+        gfx.drawTextAligned(Board.statusText(), cx, y + (16 - inkH) // 2 - inkTop,
+            kTextAlignment.center)
+    else
+        drawIconLabel(Art.iconUp, "SUBMIT SCORE", cx, y, false)
+    end
+end
+
+function Report.drawNameEntry()
+    local kb = playdate.keyboard
+    if not kb.isVisible() then return end
+    local w = math.max(120, kb.left() - 26)
+    local x, y, h = 12, 92, 56
+    Art.drawPanel(x, y, w, h)
+    Art.drawTag(x + 12, y + 8, nil, "YOUR NAME")
+    gfx.setFont(Art.numFont)
+    local blink = (pd.getCurrentTimeMilliseconds() // 400) % 2 == 0
+    gfx.drawText(string.upper(kb.text or "") .. (blink and "_" or ""), x + 12, y + 32)
+end
+
 function Report.drawHeadline(set, y)
     local f = set.frames[1]
     f.img:draw(200 - f.hw, y - f.hh)
@@ -1409,12 +1631,33 @@ function Report.buildLoseReport(key)
         Art.drawPanel(Report.X, Report.Y, Report.W, Report.H)
         local x = Report.X + Report.PAD
         local y = Report.Y + 10
-        Art.drawTag(x, y, nil, "TUMBLERS FOUND")
-        Art.drawDots(Report.X + Report.W // 2, y + 33, tumbler - 1, false,
-            Run.cfg and Run.cfg.tumblers or 3)
-        Art.drawTag(x, y + 52, nil, "PLAYED WITH")
-        Report.reportModRows(y + 73)
-        Report.reportPrompts("TRY AGAIN")
+        local cx = Report.X + Report.W // 2
+        if tutorialStep then
+            Art.drawTag(x, y, nil, "TUMBLERS FOUND")
+            Art.drawDots(cx, y + 33, tumbler - 1, false, Run.cfg and Run.cfg.tumblers or 3)
+            Art.drawTag(x, y + 52, nil, "PLAYED WITH")
+            Report.reportModRows(y + 73)
+            Report.reportPrompts("TRY AGAIN")
+        else
+            Art.drawTag(x, y, nil, "SAFES CRACKED")
+            gfx.setFont(Art.timerFont)
+            gfx.drawTextAligned(tostring(Streak.count), cx, y + 18, kTextAlignment.center)
+            gfx.setFont(Art.subFont)
+            gfx.drawTextAligned(string.format("BEST %d    TOTAL %d", Profile.data.best,
+                Profile.data.lifetime), cx, y + 50, kTextAlignment.center)
+            Art.drawTag(x, y + 64, nil, "LAST SAFE")
+            local mods = Run.mods or {}
+            local ix = cx - (#mods * 22 - 8) // 2
+            for i, m in ipairs(mods) do
+                local icon = Mods.iconImage(m.icon)
+                if icon then icon:draw(ix + (i - 1) * 22, y + 86) end
+            end
+            local ly = Report.Y + Report.H - 58
+            Art.drawLeader(x, Report.X + Report.W - Report.PAD, ly)
+            drawIconLabel(Art.iconA, "TRY AGAIN", cx, ly + 6, false)
+            drawIconLabel(Art.iconB, "TITLE", cx, ly + 21, false)
+            Report.drawSubmit()
+        end
     gfx.popContext()
     return img
 end
@@ -1553,6 +1796,10 @@ local function updateWin(dt)
     winClock = winClock + dt
     readCrank()
     if winPhase == 1 and winClock > 800 then
+        if not tutorialStep then
+            Streak.next()
+            return
+        end
         doorImage = gfx.getDisplayImage()
         winPanel = buildWinPanel()
         winPhase = 2
@@ -1590,6 +1837,10 @@ local function drawLose()
         losePanel:draw(0, math.floor(-240 + 240 * e))
     else
         losePanel:draw(0, 0)
+        if not tutorialStep and Art.panel and Art.endArt.timeup then
+            Report.drawSubmit()
+            Report.drawNameEntry()
+        end
     end
 end
 
@@ -1633,8 +1884,28 @@ local function drawTitle()
             drawCta(Art.iconA, "CRACK IT", 0, 0)
             drawCta(Art.iconB, "TUTORIAL", wA + CTA_GAP, 0)
         gfx.popContext()
+        local font = Art.titleFont
+        local label = "MOST WANTED"
+        local inkTop, inkH = Art.inkBand(font, Art.CAPS)
+        local wS = 8 + 16 + 4 + font:getTextWidth(label) + 8
+        local hS = 24
+        Art.boardChip = gfx.image.new(wS + Art.CHIP_SHADOW, hS + Art.CHIP_SHADOW)
+        gfx.pushContext(Art.boardChip)
+            if Art.chip then
+                Art.chip:drawInRect(0, 0, wS + Art.CHIP_SHADOW, hS + Art.CHIP_SHADOW)
+            else
+                gfx.fillRoundRect(0, 0, wS, hS, 6)
+            end
+            gfx.setImageDrawMode(gfx.kDrawModeInverted)
+            Art.iconUp:draw(8, (hS - 16) // 2)
+            gfx.setImageDrawMode(gfx.kDrawModeFillWhite)
+            gfx.setFont(font)
+            gfx.drawText(label, 28, (hS - inkH) // 2 - inkTop)
+            gfx.setImageDrawMode(gfx.kDrawModeCopy)
+        gfx.popContext()
     end
     Art.ctaRow:draw(math.floor(200 - (Art.ctaRow:getSize() - 4) / 2), 204)
+    Art.boardChip:draw(4, 4)
     drawEffects()          -- the auto-turn's latches land here
 end
 
@@ -1753,6 +2024,7 @@ local function jumpScreen(kind)
         state = STATE_WIN
     else
         loseReason = kind
+        Streak.submitted = false
         losePanel = buildLosePanel()
         losePhase, loseClock = 3, 0
         state = STATE_LOSE
@@ -1842,6 +2114,11 @@ local function drawMenu()
     gfx.setDitherPattern(0.5, gfx.image.kDitherTypeBayer4x4)
     gfx.fillRect(0, 0, 400, 240)
     gfx.setColor(gfx.kColorBlack)
+
+    if menuPage == "board" then
+        Board.draw()
+        return
+    end
 
     if menuPage == "debug" then
         drawSimpleMenu(DEBUG_ITEMS, dbgMenuIndex, "DEBUG")
@@ -2015,6 +2292,10 @@ end
 local function updateMenu(dt)
     menuClock = menuClock + dt
     pd.getCrankChange()   -- drain, or the crank jumps when play resumes
+    if menuPage == "board" then
+        if Board.input() then menuPage = "main" end
+        return
+    end
     if menuPage == "debug" then
         if pd.buttonJustPressed(pd.kButtonUp) then
             dbgMenuIndex = (dbgMenuIndex - 2) % #DEBUG_ITEMS + 1
@@ -2037,6 +2318,8 @@ local function updateMenu(dt)
                 -- The page owns the whole bus while it is up, so a level is
                 -- judged on that one sound and nothing else.
                 Sfx.auditionBegin()
+            elseif pick == "Reset save" then
+                Profile.reset()
             else
                 menuPage = "dbgmods"
                 dbgSel = {}
@@ -2147,6 +2430,7 @@ local function updateMenu(dt)
                     for i, sid in ipairs(dbgSel) do forced[i] = Mods.byId[sid] end
                     Sfx.uiConfirm()
                     menuImage = nil
+                    Streak.count = 0
                     startGame(forced)   -- bgmStart resets the volume, no unduck needed
                 else
                     Sfx.uiBack()
@@ -2199,6 +2483,10 @@ local function updateMenu(dt)
             Sfx.uiConfirm()
             menuPage = "mods"
             modsPage = 1
+        elseif pick == "Most Wanted" then
+            Sfx.uiConfirm()
+            menuPage = "board"
+            Board.open()
         elseif pick == "Debug" then
             Sfx.uiConfirm()
             menuPage = "debug"
@@ -2220,11 +2508,37 @@ function pd.update()
     if dt > 120 then dt = 120 end
     local workT0 = t
 
+    Board.update()
+
     if state == STATE_TITLE then
         updateTitleDial(dt)
         drawTitle()
-        if pd.buttonJustPressed(pd.kButtonA) then startGame() end
-        if pd.buttonJustPressed(pd.kButtonB) then Sfx.uiConfirm(); startTutorial(1) end
+        if pd.buttonJustPressed(pd.kButtonA) then
+            if Profile.data.tutorialDone then
+                Streak.start()
+            else
+                Sfx.uiConfirm()
+                startTutorial(1)
+            end
+        elseif pd.buttonJustPressed(pd.kButtonB) then
+            Sfx.uiConfirm()
+            startTutorial(1)
+        elseif pd.buttonJustPressed(pd.kButtonUp) then
+            Sfx.uiConfirm()
+            Board.open()
+            state = STATE_BOARD
+        end
+    elseif state == STATE_BOARD then
+        if Board.input() then state = STATE_TITLE end
+        Board.draw()
+    elseif state == STATE_NEXT then
+        Streak.clock = Streak.clock + dt
+        readCrank()
+        Streak.drawNext()
+        if Streak.clock >= Streak.NEXT_MS then
+            Streak.image = nil
+            state = STATE_PLAY
+        end
     elseif state == STATE_PLAY then
         if pd.buttonJustPressed(pd.kButtonB) then
             -- Open and draw, but do NOT run updateMenu this frame: buttonJustPressed
@@ -2248,13 +2562,17 @@ function pd.update()
         end
     elseif state == STATE_WIN then
         updateWin(dt)
-        drawWin()
-        if winPhase == 3 then
+        if state == STATE_NEXT then
+            Streak.drawNext()
+        else
+            drawWin()
+        end
+        if state == STATE_WIN and winPhase == 3 then
             if pd.buttonJustPressed(pd.kButtonA) then
                 if tutorialStep and tutorialStep < #TUTORIAL then
                     startTutorial(tutorialStep + 1)
                 else
-                    startGame()
+                    Streak.start()
                 end
             end
             if pd.buttonJustPressed(pd.kButtonB) then Sfx.uiBack(); startToTitle() end
@@ -2274,11 +2592,16 @@ function pd.update()
     else
         updateLose(dt)
         drawLose()
-        if losePhase == 3 then
+        if losePhase == 3 and not playdate.keyboard.isVisible() then
             if pd.buttonJustPressed(pd.kButtonA) then
-                if tutorialStep then startTutorial(tutorialStep) else startGame() end
+                if tutorialStep then startTutorial(tutorialStep) else Streak.start() end
+            elseif pd.buttonJustPressed(pd.kButtonB) then
+                Sfx.uiBack()
+                startToTitle()
+            elseif pd.buttonJustPressed(pd.kButtonUp) and not tutorialStep and Art.panel then
+                Sfx.uiConfirm()
+                Streak.askName()
             end
-            if pd.buttonJustPressed(pd.kButtonB) then Sfx.uiBack(); startToTitle() end
         end
     end
 

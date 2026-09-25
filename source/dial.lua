@@ -22,6 +22,7 @@ Art.iconClock14 = gfx.image.new("images/clock-14")
 Art.iconHand = gfx.image.new("images/hand-cursor")
 Art.iconA = gfx.image.new("images/btn-a-14")
 Art.iconB = gfx.image.new("images/btn-b-14")
+Art.iconUp = gfx.image.new("images/dpad-up")
 
 local function optImage(path)
     if playdate.file.exists(path .. ".pdi") then return gfx.image.new(path) end
