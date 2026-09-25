@@ -2,7 +2,7 @@ local pd <const> = playdate
 local gfx <const> = playdate.graphics
 
 Board = {
-    HOST = nil,
+    HOST = "safu-scores.vincenttuandao.workers.dev",
     PORT = 443,
     SSL = true,
     REASON = "Share your Safu scores on the online standings.",

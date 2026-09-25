@@ -1,8 +1,9 @@
 name = "safu-scores"
+account_id = "331f4308626786e5fcf652950cc6e133"
 main = "src/worker.js"
 compatibility_date = "2026-09-20"
 workers_dev = true
 
 [[kv_namespaces]]
 binding = "SCORES"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "acf3d9f4538848b8826daa328c89f62f"
