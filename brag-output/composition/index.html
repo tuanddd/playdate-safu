@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Safu — launch video</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Archivo Black";
+        src: url("assets/fonts/ArchivoBlack-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Archivo";
+        src: url("assets/fonts/Archivo-Bold.ttf") format("truetype");
+        font-weight: 700;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Archivo";
+        src: url("assets/fonts/Archivo-SemiBold.ttf") format("truetype");
+        font-weight: 600;
+        font-style: normal;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+      }
+
+      /* untimed video stage — videos carry their own data-start */
+      .stage {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+      }
+
+      video,
+      img {
+        image-rendering: pixelated;
+        display: block;
+      }
+
+      /* ---- shared footage frame: 1440x864 at (240, 40) ---- */
+      .screen {
+        position: absolute;
+        left: 240px;
+        top: 40px;
+        width: 1440px;
+        height: 864px;
+      }
+
+      /* ---- caption band under the footage ---- */
+      .band {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 920px;
+        height: 120px;
+      }
+      .band-line {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Archivo", sans-serif;
+        font-weight: 700;
+        font-size: 46px;
+        letter-spacing: 0.07em;
+        color: #fff;
+        white-space: nowrap;
+      }
+
+      /* ================= Scene 1 — the dial ================= */
+      #s1-dial {
+        position: absolute;
+        left: 650px;
+        top: 352px;
+        width: 620px;
+        height: 620px;
+        border-radius: 50%;
+      }
+      #s1-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 148px;
+        text-align: center;
+        font-family: "Archivo Black", sans-serif;
+        font-size: 96px;
+        line-height: 1.02;
+        letter-spacing: -0.012em;
+        color: #fff;
+      }
+      #s1-kchk {
+        position: absolute;
+        left: 286px;
+        top: 432px;
+        font-family: "Archivo Black", sans-serif;
+        font-size: 128px;
+        letter-spacing: -0.03em;
+        color: #fff;
+        -webkit-text-stroke: 14px #000;
+        paint-order: stroke fill;
+        white-space: nowrap;
+      }
+
+      /* ================= Scene 4 — modifier wall ================= */
+      #s4-head {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 92px;
+        text-align: center;
+        font-family: "Archivo Black", sans-serif;
+        font-size: 68px;
+        letter-spacing: -0.008em;
+        color: #fff;
+      }
+      .tile {
+        position: absolute;
+        width: 520px;
+        height: 312px;
+      }
+      /* a drawn frame, so a tile whose modifier is literal darkness still reads as a screen */
+      .tile-frame {
+        position: absolute;
+        box-sizing: border-box;
+        width: 528px;
+        height: 320px;
+        border: 4px solid #fff;
+        background: transparent;
+      }
+      .fr-col-a {
+        left: 406px;
+      }
+      .fr-col-b {
+        left: 986px;
+      }
+      .fr-row-a {
+        top: 246px;
+      }
+      .fr-row-b {
+        top: 636px;
+      }
+      .tile-label {
+        position: absolute;
+        width: 520px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Archivo", sans-serif;
+        font-weight: 700;
+        font-size: 34px;
+        letter-spacing: 0.14em;
+        color: #fff;
+      }
+      .col-a {
+        left: 410px;
+      }
+      .col-b {
+        left: 990px;
+      }
+      .row-a {
+        top: 250px;
+      }
+      .row-b {
+        top: 640px;
+      }
+      .lab-a {
+        top: 572px;
+      }
+      .lab-b {
+        top: 962px;
+      }
+
+      /* ================= Scene 6 — end card ================= */
+      #s6-device {
+        position: absolute;
+        left: 968px;
+        top: 100px;
+        width: 908px;
+        height: 880px;
+      }
+      #s6-mark {
+        position: absolute;
+        left: 168px;
+        top: 322px;
+        width: 546px;
+        height: 182px;
+      }
+      #s6-free {
+        position: absolute;
+        left: 168px;
+        top: 560px;
+        font-family: "Archivo Black", sans-serif;
+        font-size: 58px;
+        letter-spacing: -0.005em;
+        color: #fff;
+        white-space: nowrap;
+      }
+      #s6-url {
+        position: absolute;
+        left: 172px;
+        top: 654px;
+        font-family: "Archivo", sans-serif;
+        font-weight: 600;
+        font-size: 40px;
+        letter-spacing: 0.03em;
+        color: #fff;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="21.6"
+      data-fps="30"
+    >
+      <!-- ===== video stage (untimed wrapper; each video is its own clip) ===== -->
+      <div class="stage">
+        <video
+          id="v-title"
+          class="screen"
+          src="assets/video/title.mp4"
+          data-start="3.40"
+          data-duration="2.76"
+          data-track-index="1"
+          muted
+          playsinline
+        ></video>
+
+        <video
+          id="v-play"
+          class="screen"
+          src="assets/video/play.mp4"
+          data-start="6.16"
+          data-duration="5.70"
+          data-track-index="1"
+          muted
+          playsinline
+        ></video>
+
+        <video
+          id="v-keypad"
+          class="tile col-a row-a"
+          src="assets/video/mod-keypad.mp4"
+          data-start="11.96"
+          data-duration="4.50"
+          data-track-index="2"
+          muted
+          playsinline
+        ></video>
+        <video
+          id="v-nitro"
+          class="tile col-b row-a"
+          src="assets/video/mod-nitro.mp4"
+          data-start="12.51"
+          data-duration="3.95"
+          data-track-index="3"
+          muted
+          playsinline
+        ></video>
+        <video
+          id="v-gear"
+          class="tile col-a row-b"
+          src="assets/video/mod-gear.mp4"
+          data-start="13.06"
+          data-duration="3.40"
+          data-track-index="4"
+          muted
+          playsinline
+        ></video>
+        <video
+          id="v-blackout"
+          class="tile col-b row-b"
+          src="assets/video/mod-blackout.mp4"
+          data-start="13.61"
+          data-duration="2.85"
+          data-track-index="5"
+          muted
+          playsinline
+        ></video>
+
+        <video
+          id="v-open"
+          class="screen"
+          src="assets/video/open.mp4"
+          data-start="16.46"
+          data-duration="1.80"
+          data-track-index="1"
+          muted
+          playsinline
+        ></video>
+      </div>
+
+      <!-- ===== Scene 1 — the dial ===== -->
+      <section id="s1" class="clip" data-start="0" data-duration="3.40" data-track-index="0">
+        <img id="s1-dial" src="assets/img/dial.png" alt="" />
+        <div id="s1-line">THE CRANK IS THE DIAL.</div>
+        <div id="s1-kchk">K-CHK!</div>
+      </section>
+
+      <!-- ===== Scene 2 — the game ===== -->
+      <section id="s2" class="clip" data-start="3.40" data-duration="2.76" data-track-index="0">
+        <div class="band">
+          <div id="s2-cap" class="band-line">A SAFE-CRACKING GAME FOR PLAYDATE.</div>
+        </div>
+      </section>
+
+      <!-- ===== Scene 3 — the rule ===== -->
+      <section id="s3" class="clip" data-start="6.16" data-duration="5.70" data-track-index="0">
+        <div class="band">
+          <div id="s3-cap1" class="band-line">TOO FAST? START OVER.</div>
+          <div id="s3-cap2" class="band-line">LISTEN FOR THE CLICK.</div>
+        </div>
+      </section>
+
+      <!-- ===== Scene 4 — the modifier wall ===== -->
+      <section id="s4" class="clip" data-start="11.86" data-duration="4.60" data-track-index="0">
+        <div id="s4-head">13 MODIFIERS. 3 DEALT PER RUN.</div>
+        <div id="s4-fr-keypad" class="tile-frame fr-col-a fr-row-a"></div>
+        <div id="s4-fr-nitro" class="tile-frame fr-col-b fr-row-a"></div>
+        <div id="s4-fr-gear" class="tile-frame fr-col-a fr-row-b"></div>
+        <div id="s4-fr-blackout" class="tile-frame fr-col-b fr-row-b"></div>
+        <div id="s4-lab-keypad" class="tile-label col-a lab-a">KEYPAD</div>
+        <div id="s4-lab-nitro" class="tile-label col-b lab-a">NITRO</div>
+        <div id="s4-lab-gear" class="tile-label col-a lab-b">GEAR MESH</div>
+        <div id="s4-lab-blackout" class="tile-label col-b lab-b">BLACKOUT</div>
+      </section>
+
+      <!-- ===== Scene 6 — the end card ===== -->
+      <section id="s6" class="clip" data-start="18.26" data-duration="3.34" data-track-index="0">
+        <img id="s6-device" src="assets/img/device-hero.png" alt="" />
+        <img id="s6-mark" src="assets/img/wordmark.png" alt="" />
+        <div id="s6-free">FREE FOR PLAYDATE</div>
+        <div id="s6-url">vincentconsole.itch.io/safu</div>
+      </section>
+
+      <!-- ===== audio ===== -->
+      <audio
+        id="a-music"
+        src="assets/audio/music-title.mp3"
+        data-start="0"
+        data-duration="21.6"
+        data-track-index="10"
+        data-volume="0.30"
+        data-fade-in="1.2"
+        data-fade-out="1.4"
+      ></audio>
+
+      <audio
+        id="a-ticks"
+        src="assets/audio/ticks.wav"
+        data-start="0.22"
+        data-duration="2.24"
+        data-track-index="11"
+        data-volume="0.50"
+      ></audio>
+      <audio
+        id="a-latch-hook"
+        src="assets/audio/latch.wav"
+        data-start="2.35"
+        data-duration="0.35"
+        data-track-index="12"
+        data-volume="0.90"
+      ></audio>
+      <audio
+        id="a-confirm"
+        src="assets/audio/confirm.wav"
+        data-start="3.40"
+        data-duration="0.26"
+        data-track-index="13"
+        data-volume="0.50"
+      ></audio>
+      <audio
+        id="a-latch-1"
+        src="assets/audio/latch.wav"
+        data-start="8.51"
+        data-duration="0.35"
+        data-track-index="12"
+        data-volume="0.80"
+      ></audio>
+      <audio
+        id="a-latch-2"
+        src="assets/audio/latch.wav"
+        data-start="9.71"
+        data-duration="0.35"
+        data-track-index="12"
+        data-volume="0.80"
+      ></audio>
+      <audio
+        id="a-latch-3"
+        src="assets/audio/latch.wav"
+        data-start="11.16"
+        data-duration="0.35"
+        data-track-index="12"
+        data-volume="0.95"
+      ></audio>
+      <audio
+        id="a-thunk"
+        src="assets/audio/impactSoft_medium_001.ogg"
+        data-start="11.16"
+        data-duration="0.18"
+        data-track-index="14"
+        data-volume="0.60"
+      ></audio>
+      <audio
+        id="a-card-1"
+        src="assets/audio/card-place-2.ogg"
+        data-start="11.96"
+        data-duration="0.45"
+        data-track-index="15"
+        data-volume="0.62"
+      ></audio>
+      <audio
+        id="a-card-2"
+        src="assets/audio/card-place-2.ogg"
+        data-start="12.51"
+        data-duration="0.45"
+        data-track-index="15"
+        data-volume="0.55"
+      ></audio>
+      <audio
+        id="a-card-3"
+        src="assets/audio/card-place-2.ogg"
+        data-start="13.06"
+        data-duration="0.45"
+        data-track-index="15"
+        data-volume="0.55"
+      ></audio>
+      <audio
+        id="a-card-4"
+        src="assets/audio/card-place-2.ogg"
+        data-start="13.61"
+        data-duration="0.45"
+        data-track-index="15"
+        data-volume="0.68"
+      ></audio>
+      <audio
+        id="a-cleared"
+        src="assets/audio/cleared.wav"
+        data-start="16.46"
+        data-duration="2.06"
+        data-track-index="16"
+        data-volume="0.90"
+      ></audio>
+      <audio
+        id="a-card-slam"
+        src="assets/audio/impactSoft_medium_001.ogg"
+        data-start="18.81"
+        data-duration="0.18"
+        data-track-index="14"
+        data-volume="0.50"
+      ></audio>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      /* ---------- Scene 1 — the dial (0.00 → 3.40) ---------- */
+      // the dial turns like the crank does, then locks dead on the latch
+      tl.fromTo("#s1-dial", { rotation: 0 }, { rotation: 26, duration: 2.35, ease: "none" }, 0);
+      tl.fromTo(
+        "#s1-line",
+        { y: -60, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.32, ease: "power4.out" },
+        0.35
+      );
+      // the latch: jolt on the exact frame sweet.wav fires
+      tl.to("#s1-dial", { x: 16, duration: 0.05, ease: "power2.out" }, 2.35);
+      tl.to("#s1-dial", { x: -9, duration: 0.06, ease: "power1.inOut" }, 2.4);
+      tl.to("#s1-dial", { x: 0, duration: 0.09, ease: "power2.out" }, 2.46);
+      tl.fromTo(
+        "#s1-kchk",
+        { scale: 0.62, opacity: 0, rotation: -15 },
+        { scale: 1, opacity: 1, rotation: -8, duration: 0.22, ease: "back.out(2.4)" },
+        2.35
+      );
+
+      /* ---------- Scene 2 — the game (3.40 → 6.16) ---------- */
+      tl.fromTo("#v-title", { scale: 1.05 }, { scale: 1, duration: 0.6, ease: "power2.out" }, 3.4);
+      tl.fromTo(
+        "#s2-cap",
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.3, ease: "power3.out" },
+        4.15
+      );
+
+      /* ---------- Scene 3 — the rule (6.16 → 11.86) ---------- */
+      // cap1 lands on the footage's own TOO FAST overlay (6.86s)
+      tl.fromTo(
+        "#s3-cap1",
+        { y: 26, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.26, ease: "power3.out" },
+        6.81
+      );
+      tl.to("#s3-cap1", { opacity: 0, duration: 0.16, ease: "power1.in" }, 8.34);
+      // cap2 lands on the first K-CHK! latch (8.51s) and holds through K-CHUNK!
+      tl.set("#s3-cap2", { opacity: 0 }, 0);
+      tl.fromTo(
+        "#s3-cap2",
+        { y: 26, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.26, ease: "power3.out" },
+        8.51
+      );
+
+      /* ---------- Scene 4 — the modifier wall (11.86 → 16.46) ---------- */
+      tl.fromTo(
+        "#s4-head",
+        { y: -34, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.3, ease: "power4.out" },
+        11.91
+      );
+      const tiles = [
+        ["#v-keypad", "#s4-fr-keypad", "#s4-lab-keypad", 11.96],
+        ["#v-nitro", "#s4-fr-nitro", "#s4-lab-nitro", 12.51],
+        ["#v-gear", "#s4-fr-gear", "#s4-lab-gear", 13.06],
+        ["#v-blackout", "#s4-fr-blackout", "#s4-lab-blackout", 13.61],
+      ];
+      tiles.forEach(([vid, frame, lab, at]) => {
+        tl.fromTo(
+          [vid, frame],
+          { scale: 0.88, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.3, ease: "power3.out" },
+          at
+        );
+        tl.fromTo(
+          lab,
+          { y: 14, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.26, ease: "power3.out" },
+          at + 0.06
+        );
+      });
+
+      /* ---------- Scene 5 — the payoff (16.46 → 18.26) ---------- */
+      tl.fromTo("#v-open", { scale: 1 }, { scale: 1.035, duration: 1.78, ease: "none" }, 16.46);
+
+      /* ---------- Scene 6 — the end card (18.26 → 21.60) ---------- */
+      tl.fromTo(
+        "#s6-device",
+        { x: 130, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+        18.36
+      );
+      tl.fromTo(
+        "#s6-mark",
+        { y: -44, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.3, ease: "power4.out" },
+        18.81
+      );
+      tl.fromTo(
+        "#s6-free",
+        { y: 22, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.28, ease: "power3.out" },
+        19.21
+      );
+      tl.fromTo(
+        "#s6-url",
+        { y: 22, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.28, ease: "power3.out" },
+        19.61
+      );
+
+      tl.set({}, {}, 21.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

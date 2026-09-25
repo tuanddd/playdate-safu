@@ -1,0 +1,3 @@
+Safu — a Playdate game where the crank is the safe dial. Turn slowly, listen for the click, find three sweet spots, then pull the handle. 13 modifiers, 3 dealt per run.
+
+Free: vincentconsole.itch.io/safu
